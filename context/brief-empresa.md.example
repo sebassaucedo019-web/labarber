@@ -1,0 +1,64 @@
+# Brief de la empresa
+
+Completá esto una vez por bot y guardalo como `context/brief-empresa.md` (sin
+`.example`) — el mismo patrón que `.env.example` → `.env`.
+
+Dos lugares lo usan:
+
+- El agente de código, al leer [AGENTS.md](../AGENTS.md), lo usa para responder por vos
+  las preguntas de la entrevista que ya cubre acá, y solo te pregunta lo que falte.
+- El bot en producción lo carga en su system prompt (`app/agent/agent.py`), así responde
+  con la info real de tu negocio en vez de los datos de ejemplo del template.
+
+Si no tenés ganas de completarlo campo por campo, pegale a tu agente de código cualquier
+texto suelto que ya tengas del negocio (una web, un doc interno, un email) y pedile que
+lo acomode en este formato.
+
+## Datos básicos
+
+- Nombre del negocio:
+- Rubro:
+- Tono de voz: (formal / cercano / directo — dale 2-3 ejemplos de cómo hablarías vos)
+- Idioma(s) de los usuarios:
+- Horario de atención:
+
+## Qué hace el bot
+
+- Propósito en una frase:
+- Casos de uso que sí cubre:
+- Casos de uso que NO cubre (se deriva a humano):
+
+## Productos / servicios
+
+(Resumen. Si es un catálogo largo, no lo pegues entero acá — ver nota al final.)
+
+## Preguntas frecuentes
+
+- P:
+  R:
+
+## Políticas
+
+- Envíos:
+- Devoluciones / cancelaciones:
+- Métodos de pago:
+
+## Contacto de escalado
+
+- Cómo deriva a un humano (email / Slack / Chatwoot) y quién lo recibe:
+
+## Lo que el bot NUNCA debe hacer
+
+(Ej: prometer descuentos, dar precios que cambian seguido, confirmar turnos sin pasar
+por la tool `agendar`.)
+
+---
+
+**Si esto crece mucho** (catálogo de cientos de productos, políticas extensas): pegar
+todo acá satura el system prompt y sale caro en tokens en cada mensaje. En ese punto
+conviene una tool de búsqueda (RAG) en vez de texto plano completo — no está armado en
+este template todavía, es el paso natural cuando el brief ya no entra cómodo acá.
+
+**Si algo de esto es sensible** (precios internos, márgenes) y este repo va a ser
+público, agregá `context/brief-empresa.md` a tu `.gitignore` antes de completarlo — no
+viene ignorado por default porque para la mayoría de los casos no hace falta.

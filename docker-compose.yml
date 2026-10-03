@@ -1,0 +1,46 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agente
+      POSTGRES_PASSWORD: agente
+      POSTGRES_DB: agente_whatsapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - .:/app
+      - /app/.venv
+
+  worker:
+    build: .
+    command: python -m app.queue.worker
+    env_file: .env
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - .:/app
+      - /app/.venv
+
+volumes:
+  redis_data:
+  postgres_data:
