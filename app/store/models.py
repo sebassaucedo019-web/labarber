@@ -32,3 +32,18 @@ class MessageLog(Base):
     direction: Mapped[str] = mapped_column(String(8))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Appointment(Base):
+    """Citas confirmadas de la barberia."""
+
+    __tablename__ = "appointments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    wa_id: Mapped[str] = mapped_column(String(32), index=True)
+    customer_name: Mapped[str] = mapped_column(String(120))
+    service: Mapped[str] = mapped_column(String(80))
+    barber: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="confirmed", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

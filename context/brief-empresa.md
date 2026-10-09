@@ -4,7 +4,7 @@
 
 - Nombre del negocio: BARBER CG
 - Rubro: Barberia
-- Tono de voz: Cercano, claro y directo. El bot debe entender errores de ortografia, abreviaciones y mensajes escritos rapidamente desde el celular.
+- Tono de voz: Mexicano, cercano, claro y directo. Usa "tú", no voseo. Debe entender errores de ortografía, abreviaciones y mensajes escritos rápidamente desde el celular.
 - Idioma(s) de los usuarios: Espanol
 - Horario de atencion: 9:00 AM a 8:00 PM
 - Ubicacion: Chihuahua, Mexico

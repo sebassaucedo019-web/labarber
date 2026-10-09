@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 _client: WhatsApp | None = None
 
 
+def _meta_recipient_id(wa_id: str) -> str:
+    """Convert WhatsApp's legacy Mexico mobile format to Meta's API format."""
+    digits = "".join(ch for ch in wa_id if ch.isdigit())
+    if digits.startswith("521") and len(digits) == 13:
+        return "52" + digits[3:]
+    return digits
+
+
 def get_client() -> WhatsApp:
     global _client
     if _client is None:
@@ -23,10 +31,17 @@ def get_client() -> WhatsApp:
 
 def send_text(wa_id: str, text: str) -> None:
     try:
-        get_client().send_message(to=wa_id, text=text)
+        recipient = _meta_recipient_id(wa_id)
+        logger.info("enviando respuesta a Meta recipient=%s", recipient)
+        sent = get_client().send_message(to=recipient, text=text)
+        logger.info(
+            "respuesta enviada a WhatsApp wa_id_hash=%s message_id=%s",
+            hash_wa_id(wa_id),
+            getattr(sent, "id", "desconocido"),
+        )
     except Exception:
         logger.exception(
-            "no se pudo enviar el mensaje wa_id_hash=%s — si el error es de ventana, "
-            "revisá docs/01-arquitectura.md (regla de las 24h, necesitás una plantilla)",
+            "no se pudo enviar el mensaje recipient=%s wa_id_hash=%s",
+            _meta_recipient_id(wa_id),
             hash_wa_id(wa_id),
         )

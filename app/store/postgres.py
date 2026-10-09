@@ -1,18 +1,28 @@
 from __future__ import annotations
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
 from app.observability import hash_wa_id
 from app.store.models import Base, Conversation, MessageLog
 
-_engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+_database_url = get_settings().database_url
+_engine_options = {"pool_pre_ping": True}
+if _database_url.startswith("sqlite"):
+    _engine_options["connect_args"] = {"check_same_thread": False}
+
+_engine = create_engine(_database_url, **_engine_options)
 SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
 
 def init_db() -> None:
     Base.metadata.create_all(_engine)
+    if "appointments" in inspect(_engine).get_table_names():
+        columns = {column["name"] for column in inspect(_engine).get_columns("appointments")}
+        if "barber" not in columns:
+            with _engine.begin() as connection:
+                connection.execute(text("ALTER TABLE appointments ADD COLUMN barber VARCHAR(80)"))
 
 
 def get_session() -> Session:

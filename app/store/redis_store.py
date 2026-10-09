@@ -8,7 +8,8 @@ _client: redis.Redis | None = None
 def get_redis() -> redis.Redis:
     global _client
     if _client is None:
-        _client = redis.from_url(get_settings().redis_url, decode_responses=True)
+        # RQ expects byte responses from Redis; decode app-level values below.
+        _client = redis.from_url(get_settings().redis_url, decode_responses=False)
     return _client
 
 
@@ -23,4 +24,4 @@ def pop_pending_messages(wa_id: str) -> list[str]:
     pipe.lrange(key, 0, -1)
     pipe.delete(key)
     messages, _ = pipe.execute()
-    return messages
+    return [message.decode("utf-8") if isinstance(message, bytes) else message for message in messages]

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     crm_webhook_url: str | None = None
     escalation_webhook_url: str | None = None
+    owner_wa_id: str | None = None
+    barber_obed_wa_id: str | None = None
+    barber_jesus_wa_id: str | None = None
+    barber_yadier_wa_id: str | None = None
 
 
 @lru_cache
