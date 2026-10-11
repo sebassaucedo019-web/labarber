@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.agent.deps import BotDeps
 from app.config import get_settings
 from app.escalation import notify_human
+from app.sender import send_text
 from app.store.models import Appointment
 
 SERVICES = {
@@ -85,38 +86,92 @@ def consultar_disponibilidad(ctx: RunContext[BotDeps], fecha: str, barbero: str)
     return f"Horarios disponibles para {fecha}: {', '.join(available) or 'no hay espacios'}."
 
 
-def ver_siguiente_cita(ctx: RunContext[BotDeps]) -> str:
-    """Muestra la siguiente cita únicamente al número del dueño configurado."""
+def _last10(value: str | None) -> str | None:
+    digits = "".join(ch for ch in value if ch.isdigit()) if value else ""
+    return digits[-10:] if len(digits) >= 10 else None
+
+
+def _staff_recipient(barber: str) -> str | None:
     settings = get_settings()
-    caller = ctx.deps.wa_id[-10:]
+    configured = {
+        "Obed": settings.barber_obed_wa_id,
+        "Jesús": settings.barber_jesus_wa_id,
+        "Yadier": settings.barber_yadier_wa_id,
+    }.get(barber)
+    return configured if _last10(configured) else None
+
+
+def _notify_staff_of_appointment(appointment: Appointment) -> None:
+    settings = get_settings()
+    recipients = [settings.owner_wa_id, _staff_recipient(appointment.barber or "")]
+    seen: set[str] = set()
+    message = (
+        "Nueva cita en BARBER CG 💈\n"
+        f"{_format_appointment(appointment)}\n"
+        f"Cliente: {appointment.customer_name}"
+    )
+    for recipient in recipients:
+        key = _last10(recipient)
+        if key and key not in seen:
+            seen.add(key)
+            send_text(recipient, message)
+
+
+def _staff_access(wa_id: str) -> tuple[bool, str | None]:
+    """Dueño ve toda la agenda; cada barbero solo la suya. Clientes no acceden."""
+    settings = get_settings()
+    caller = wa_id[-10:]
+    if settings.owner_wa_id and caller == _last10(settings.owner_wa_id):
+        return True, None
     access = {
         "Obed": settings.barber_obed_wa_id,
         "Jesús": settings.barber_jesus_wa_id,
         "Yadier": settings.barber_yadier_wa_id,
     }
-    is_admin = bool(settings.owner_wa_id and caller == settings.owner_wa_id.replace("+", "")[-10:])
-    if is_admin:
-        barber_filter = None
-    else:
-        barber_filter = next(
-            (name for name, wa_id in access.items()
-             if wa_id and caller == wa_id.replace("+", "")[-10:]),
-            None,
-        )
+    for name, configured in access.items():
+        if configured and caller == _last10(configured):
+            return False, name
+    return False, None
+
+
+def _format_appointment(appointment: Appointment) -> str:
+    price = SERVICES.get(appointment.service, 0)
+    return (
+        f"{appointment.starts_at:%d/%m/%Y} {appointment.starts_at:%H:%M} — "
+        f"{appointment.customer_name}, {appointment.service} (${price} MXN), "
+        f"con {appointment.barber or 'barbero por asignar'}"
+    )
+
+
+def ver_siguiente_cita(ctx: RunContext[BotDeps]) -> str:
+    """Muestra la siguiente cita al dueño o al barbero que consulta."""
+    is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
     if not is_admin and barber_filter is None:
-        return "Esta consulta está disponible únicamente para el dueño de BARBER CG."
+        return "Esta consulta está disponible únicamente para el dueño o los barberos de BARBER CG."
     conditions = [Appointment.starts_at >= _now(), Appointment.status == "confirmed"]
     if barber_filter:
         conditions.append(Appointment.barber == barber_filter)
     appointment = ctx.deps.db.scalar(select(Appointment).where(*conditions).order_by(Appointment.starts_at))
     if appointment is None:
         return "No hay citas próximas confirmadas."
-    price = SERVICES.get(appointment.service, 0)
-    return (
-        f"La siguiente cita es el {appointment.starts_at:%d/%m/%Y} a las "
-        f"{appointment.starts_at:%H:%M}: {appointment.customer_name}, "
-        f"{appointment.service} (${price} MXN), con {appointment.barber or 'barbero por asignar'}."
-    )
+    return f"La siguiente cita es el {_format_appointment(appointment)}."
+
+
+def ver_agenda(ctx: RunContext[BotDeps]) -> str:
+    """Lista citas próximas: el dueño ve todas; cada barbero ve las suyas."""
+    is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
+    if not is_admin and barber_filter is None:
+        return "Esta consulta está disponible únicamente para el dueño o los barberos de BARBER CG."
+    conditions = [Appointment.starts_at >= _now(), Appointment.status == "confirmed"]
+    if barber_filter:
+        conditions.append(Appointment.barber == barber_filter)
+    rows = ctx.deps.db.scalars(
+        select(Appointment).where(*conditions).order_by(Appointment.starts_at).limit(15)
+    ).all()
+    if not rows:
+        return "No hay citas próximas confirmadas."
+    header = "Próximas citas:" if is_admin else f"Tus próximas citas ({barber_filter}):"
+    return header + "\n" + "\n".join(_format_appointment(row) for row in rows)
 
 
 def agendar(ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: str, barbero: str) -> str:
@@ -154,6 +209,14 @@ def agendar(ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: st
         starts_at=starts_at,
     ))
     ctx.deps.db.commit()
+    appointment = ctx.deps.db.scalar(select(Appointment).where(
+        Appointment.wa_id == ctx.deps.wa_id,
+        Appointment.starts_at == starts_at,
+        Appointment.barber == barber,
+        Appointment.status == "confirmed",
+    ))
+    if appointment is not None:
+        _notify_staff_of_appointment(appointment)
     return (
         f"Cita confirmada para {nombre.strip()}, {service} "
         f"(${SERVICES[service]} MXN), el {starts_at:%d/%m/%Y} "

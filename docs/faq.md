@@ -30,7 +30,7 @@ Depende de tu caso de uso, no de "copiar todo por las dudas" — cada ejemplo ag
 
 ## ¿Cómo cambio el modelo de OpenAI?
 
-Cambiá `OPENAI_MODEL` en tu `.env` — no está fijado en el código a propósito, porque los modelos disponibles cambian seguido. `app/agent/agent.py` arma el agente con `f"openai:{settings.openai_model}"`, así que cualquier modelo válido de OpenAI funciona sin tocar código. Confirmá el nombre exacto en `platform.openai.com/docs/models` antes de pegarlo.
+Cambiá `OPENAI_MODEL` en tu `.env` local o en Railway (servicios `labarber` y `labarber-worker`). No está fijado en el código a propósito. `app/agent/agent.py` arma el agente con `OpenAIResponsesModel(settings.openai_model)`. Un valor vacío produce el error `The model '' does not exist`. Confirmá el nombre exacto en `platform.openai.com/docs/models` — un id vigente para Responses API es `gpt-4o-mini`.
 
 ## ¿Qué hago si Meta rechaza mi plantilla?
 

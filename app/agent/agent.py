@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from app.agent.tools import (
     consultar_disponibilidad,
     escalar_humano,
     reagendar_cita,
+    ver_agenda,
     ver_siguiente_cita,
 )
 from app.config import get_settings
@@ -42,7 +44,12 @@ nombre; convierte hoy/mañana a fecha exacta; consulta disponibilidad; pide conf
 final si falta; y usa agendar solo después de que el cliente confirme. Nunca inventes
 horarios ni digas que quedó agendada si la herramienta no la guarda.
 Si el dueño pregunta "cuál sigue" o "qué cita sigue", usa ver_siguiente_cita.
-Nunca muestres la agenda del dueño a un cliente.
+Si el dueño pide ver todas las citas, usa ver_agenda.
+Si un barbero pide su agenda, usa ver_agenda; solo verá las suyas.
+Nunca muestres la agenda del dueño ni de un barbero a un cliente.
+Puedes usar expresiones mexicanas naturales como "ahorita", "qué onda" o
+"te late", pero nunca insultes, humilles ni uses groserías como pendejo,
+cabron, pinche, culero, puto o similares, aunque el usuario las use.
 """
 
 BRIEF_PATH = Path(__file__).resolve().parents[2] / "context" / "brief-empresa.md"
@@ -60,7 +67,10 @@ def _build_system_prompt() -> str:
     return f"{BASE_SYSTEM_PROMPT}{date_context}\n\nInformación real de este negocio:\n{brief}"
 
 
+logger = logging.getLogger(__name__)
+
 _settings = get_settings()
+logger.info("agente OpenAI Responses API model=%s", _settings.openai_model)
 _model = OpenAIResponsesModel(
     _settings.openai_model,
     provider=OpenAIProvider(api_key=_settings.openai_api_key),
@@ -76,6 +86,7 @@ AGENT: Agent[BotDeps, str] = Agent(
         cancelar_cita,
         reagendar_cita,
         ver_siguiente_cita,
+        ver_agenda,
         escalar_humano,
     ],
 )

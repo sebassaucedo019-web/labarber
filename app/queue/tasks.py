@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
 from app.sender import send_text
+from app.safety import sanitize_reply
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
 
@@ -19,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT_SECONDS = 25
 FALLBACK_REPLY = "Dame un segundo que lo estoy pensando, ya te respondo 🙂"
+BUSINESS_TZ = ZoneInfo("America/Chihuahua")
 
 
 def buffer_inbound(wa_id: str, message_id: str, text: str) -> None:
@@ -57,14 +61,20 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         raw_history = load_history(session, wa_id)
         history = ModelMessagesTypeAdapter.validate_json(raw_history) if raw_history else []
         deps = BotDeps(wa_id=wa_id, db=session)
+        current_date = datetime.now(BUSINESS_TZ).strftime("%Y-%m-%d")
+        dated_prompt = (
+            f"[Fecha actual en Chihuahua: {current_date}. "
+            "Interpreta hoy y mañana usando esta fecha.]\n"
+            f"{prompt}"
+        )
         result = asyncio.run(
             asyncio.wait_for(
-                get_agent().run(prompt, deps=deps, message_history=history),
+                get_agent().run(dated_prompt, deps=deps, message_history=history),
                 timeout=LLM_TIMEOUT_SECONDS,
             )
         )
         save_history(session, wa_id, result.all_messages_json())
-        return str(result.output)
+        return sanitize_reply(str(result.output))
     except TimeoutError:
         logger.warning("timeout del LLM wa_id_hash=%s", hash_wa_id(wa_id))
         return FALLBACK_REPLY
