@@ -13,6 +13,8 @@ _BUSINESS_TERMS = (
     "cambiar cita", "siguiente cita", "turno", "hoy", "manana", "pasado manana",
     "dia", "hora", "silla", "atienden", "abren", "cierran", "ubicacion",
     "direccion", "donde estan", "llegar", "telefono", "whatsapp",
+    "nombre", "la otra", "otra cita", "segunda cita", "viernes", "sabado", "domingo",
+    "lunes", "martes", "miercoles", "jueves",
 )
 _DIRECT_BUSINESS_TERMS = tuple(
     term for term in _BUSINESS_TERMS

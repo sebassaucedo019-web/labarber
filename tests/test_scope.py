@@ -19,6 +19,7 @@ def test_allows_barber_messages_and_greetings() -> None:
 def test_business_context_wins_when_word_is_ambiguous() -> None:
     assert is_business_message("¿Qué hora tienen disponible para mi cita?")
     assert is_business_message("¿Me pueden confirmar para las 5?")
+    assert is_business_message("La otra a nombre de Totopo para el viernes mejor")
 
 
 def test_rejects_unrelated_questions_beyond_math() -> None:
