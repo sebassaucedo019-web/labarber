@@ -11,10 +11,12 @@ _client: WhatsApp | None = None
 
 
 def _meta_recipient_id(wa_id: str) -> str:
-    """Convert WhatsApp's legacy Mexico mobile format to Meta's API format."""
+    """Convert Mexican local and legacy IDs to Meta's international format."""
     digits = "".join(ch for ch in wa_id if ch.isdigit())
     if digits.startswith("521") and len(digits) == 13:
         return "52" + digits[3:]
+    if len(digits) == 10:
+        return "52" + digits
     return digits
 
 
