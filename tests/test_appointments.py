@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.deps import BotDeps
 from app.agent.tools import agendar, cancelar_cita, ver_agenda, ver_siguiente_cita
+from app.agenda import create_agenda_link
 from app.config import get_settings
 from app.store.models import Appointment, Base
 
@@ -97,4 +98,15 @@ def test_dueno_ve_todas_y_barbero_solo_las_suyas(monkeypatch: pytest.MonkeyPatch
     assert "Ana" in barber_list
     assert "Luis" not in barber_list
     assert "Obed" in ver_siguiente_cita(as_ctx(barber_deps))
+    get_settings.cache_clear()
+
+
+def test_agenda_link_only_staff_can_create_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_staff_ids(monkeypatch)
+    owner_link = create_agenda_link("5216110000000")
+    customer_link = create_agenda_link("5216999999999")
+
+    assert owner_link is not None
+    assert owner_link.startswith("https://labarber-production-b9de.up.railway.app/agenda?token=")
+    assert customer_link is None
     get_settings.cache_clear()

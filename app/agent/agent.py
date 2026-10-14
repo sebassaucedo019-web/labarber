@@ -13,6 +13,7 @@ from app.agent.tools import (
     cancelar_cita,
     consultar_disponibilidad,
     escalar_humano,
+    obtener_enlace_agenda,
     reagendar_cita,
     ver_agenda,
     ver_siguiente_cita,
@@ -52,6 +53,7 @@ horarios ni digas que quedó agendada si la herramienta no la guarda.
 Si el dueño pregunta "cuál sigue" o "qué cita sigue", usa ver_siguiente_cita.
 Si el dueño pide ver todas las citas, usa ver_agenda.
 Si un barbero pide su agenda, usa ver_agenda; solo verá las suyas.
+Si el dueño o un barbero pide ver la agenda en su celular, usa obtener_enlace_agenda.
 Nunca muestres la agenda del dueño ni de un barbero a un cliente.
 Puedes usar expresiones mexicanas naturales como "ahorita", "qué onda" o
 "te late", pero nunca insultes, humilles ni uses groserías como pendejo,
@@ -94,6 +96,7 @@ AGENT: Agent[BotDeps, str] = Agent(
         ver_siguiente_cita,
         ver_agenda,
         escalar_humano,
+        obtener_enlace_agenda,
     ],
 )
 

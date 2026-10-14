@@ -5,6 +5,7 @@ from pydantic_ai import RunContext
 from sqlalchemy import select
 
 from app.agent.deps import BotDeps
+from app.agenda import create_agenda_link
 from app.config import get_settings
 from app.escalation import notify_human
 from app.sender import send_text
@@ -172,6 +173,14 @@ def ver_agenda(ctx: RunContext[BotDeps]) -> str:
         return "No hay citas próximas confirmadas."
     header = "Próximas citas:" if is_admin else f"Tus próximas citas ({barber_filter}):"
     return header + "\n" + "\n".join(_format_appointment(row) for row in rows)
+
+
+def obtener_enlace_agenda(ctx: RunContext[BotDeps]) -> str:
+    """Genera un enlace móvil temporal para el dueño o el barbero autenticado."""
+    link = create_agenda_link(ctx.deps.wa_id)
+    if link is None:
+        return "Esta función está disponible únicamente para el dueño o los barberos de BARBER CG."
+    return f"Aquí tienes tu agenda en el celular (el enlace dura 24 horas):\n{link}"
 
 
 def agendar(ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: str, barbero: str) -> str:
