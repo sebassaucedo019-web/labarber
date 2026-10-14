@@ -15,6 +15,7 @@ from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
 from app.sender import send_text
 from app.safety import sanitize_reply
+from app.scope import is_business_message
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
 
@@ -45,6 +46,9 @@ def process_wa_id(wa_id: str) -> None:
         return
 
     prompt = "\n".join(messages)
+    if not is_business_message(prompt):
+        logger.info("mensaje fuera de alcance ignorado wa_id_hash=%s", hash_wa_id(wa_id))
+        return
     session = get_session()
     try:
         log_message(session, wa_id, "in", prompt)
