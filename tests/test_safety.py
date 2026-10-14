@@ -11,3 +11,10 @@ def test_sanitize_reply_removes_common_insults() -> None:
     result = sanitize_reply("Ese pendejo es un cabrón")
     assert "pendejo" not in result.lower()
     assert "cabrón" not in result.lower()
+
+
+def test_sanitize_reply_removes_more_insults_and_never_returns_empty() -> None:
+    result = sanitize_reply("Eres un idiota, no mames")
+    assert "idiota" not in result.lower()
+    assert "no mames" not in result.lower()
+    assert result
