@@ -6,7 +6,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.agent.deps import BotDeps
-from app.agent.tools import agendar, cancelar_cita, ver_agenda, ver_siguiente_cita
+from app.agent.tools import (
+    _notify_staff_of_appointment,
+    agendar,
+    cancelar_cita,
+    ver_agenda,
+    ver_siguiente_cita,
+)
 from app.agenda import create_agenda_link
 from app.config import get_settings
 from app.store.models import Appointment, Base
@@ -109,4 +115,28 @@ def test_agenda_link_only_staff_can_create_it(monkeypatch: pytest.MonkeyPatch) -
     assert owner_link is not None
     assert owner_link.startswith("https://labarber-production-b9de.up.railway.app/agenda?token=")
     assert customer_link is None
+    get_settings.cache_clear()
+
+
+def test_confirmed_appointment_notifies_owner_and_assigned_barber(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_staff_ids(monkeypatch)
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.agent.tools.send_text",
+        lambda recipient, message: sent.append((recipient, message)),
+    )
+    appointment = Appointment(
+        wa_id="5216140000001",
+        customer_name="Ana",
+        service="corte normal",
+        barber="Obed",
+        starts_at=datetime.now() + timedelta(days=1),
+    )
+
+    _notify_staff_of_appointment(appointment)
+
+    assert {recipient for recipient, _ in sent} == {"5216110000000", "5216111111111"}
+    assert all("La cita quedó confirmada" in message for _, message in sent)
     get_settings.cache_clear()

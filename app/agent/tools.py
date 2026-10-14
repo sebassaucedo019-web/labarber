@@ -107,9 +107,10 @@ def _notify_staff_of_appointment(appointment: Appointment) -> None:
     recipients = [settings.owner_wa_id, _staff_recipient(appointment.barber or "")]
     seen: set[str] = set()
     message = (
-        "Nueva cita en BARBER CG 💈\n"
+        "Confirmación de cita en BARBER CG 💈\n"
         f"{_format_appointment(appointment)}\n"
-        f"Cliente: {appointment.customer_name}"
+        f"Cliente: {appointment.customer_name}\n"
+        "La cita quedó confirmada."
     )
     for recipient in recipients:
         key = _last10(recipient)
