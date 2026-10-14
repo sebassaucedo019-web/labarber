@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT_SECONDS = 25
 FALLBACK_REPLY = "Dame un segundo que lo estoy pensando, ya te respondo 🙂"
+OUT_OF_SCOPE_REPLY = (
+    "Puedo ayudarte únicamente con los servicios y citas de BARBER CG 💈 "
+    "¿Quieres ver precios o agendar?"
+)
 BUSINESS_TZ = ZoneInfo("America/Chihuahua")
 
 
@@ -48,6 +52,7 @@ def process_wa_id(wa_id: str) -> None:
     prompt = "\n".join(messages)
     if not is_business_message(prompt):
         logger.info("mensaje fuera de alcance ignorado wa_id_hash=%s", hash_wa_id(wa_id))
+        send_text(wa_id, OUT_OF_SCOPE_REPLY)
         return
     session = get_session()
     try:

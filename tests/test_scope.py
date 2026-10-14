@@ -13,6 +13,7 @@ def test_allows_barber_messages_and_greetings() -> None:
     assert is_business_message("¿Cuánto sale?")
     assert is_business_message("¿Dónde están y a qué hora atienden?")
     assert is_business_message("¿Tienen espacio a las 5?")
+    assert is_business_message("Sí")
 
 
 def test_business_context_wins_when_word_is_ambiguous() -> None:

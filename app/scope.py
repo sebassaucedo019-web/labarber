@@ -20,6 +20,10 @@ _DIRECT_BUSINESS_TERMS = tuple(
 )
 
 _GREETING_RE = re.compile(r"^(hola|hey|buenas(?: tardes| dias| noches)?|que onda|buen dia)[!.? ]*$")
+_FOLLOW_UP_RE = re.compile(
+    r"^(si|sí|ok|okay|va|dale|confirmo|confirmar|agendala|agéndala|hazlo|listo)[!.? ]*$",
+    re.IGNORECASE,
+)
 _OFF_TOPIC_RE = re.compile(
     r"\b(?:tarea|matematicas?|ecuacion(?:es)?|suma|resta|multiplicacion|division|"
     r"escuela|clase|examen|program(?:a|acion|ar)|codigo|clima|futbol|noticias|"
@@ -38,6 +42,8 @@ def is_business_message(text: str) -> bool:
     if not normalized:
         return False
     if _GREETING_RE.fullmatch(normalized):
+        return True
+    if _FOLLOW_UP_RE.fullmatch(normalized):
         return True
     if _OFF_TOPIC_RE.search(normalized) and not _has_business_term(
         normalized, _DIRECT_BUSINESS_TERMS
