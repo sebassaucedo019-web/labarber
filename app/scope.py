@@ -9,6 +9,12 @@ _BUSINESS_TERMS = (
     "servicio", "servicios", "corte", "cortes", "barba", "precio", "precios",
     "cuanto cuesta", "cuanto sale", "cuanto cobran", "tarifa", "horario",
     "horarios", "disponibilidad", "disponible", "espacio", "barbero", "barberos",
+    "cabello", "pelo", "bigote", "ceja", "patilla", "perfilado", "rasurar",
+    "degradado", "fade", "clasico", "normal", "juvenil", "nino", "niño", "lavado",
+    "diseño", "diseno", "maquina", "tijera", "cortar", "cortarme", "arreglo",
+    "efectivo", "tarjeta", "transferencia", "pago", "cuanto tardan", "duracion",
+    "ubicacion", "direccion", "estacionamiento", "mapa", "como llego", "abierto",
+    "cerrado", "trabajan", "ofrecen", "hacen", "atienden", "turno", "fila",
     "obed", "jesus", "yadier", "cancelar", "cancela", "cancelo", "cancelada",
     "canceladas", "cita", "citas", "reagendar", "reagendo",
     "cambiar cita", "siguiente cita", "turno", "hoy", "manana", "pasado manana",
@@ -41,6 +47,13 @@ _OFF_TOPIC_RE = re.compile(
     r"escuela|clase|examen|program(?:a|acion|ar)|codigo|clima|futbol|noticias|"
     r"receta|cancion|lyrics|poema|traduce|ingles)\b"
 )
+_BUSINESS_INTENT_RE = re.compile(
+    r"\b(?:quiero|necesito|busco|puedo|pueden|tienen|hay|me gustaria|me gustaria|"
+    r"se puede|me puedo|voy|paso|caigo|mandame|pasa|dame|como|donde|cuando|"
+    r"que|cual)\b.{0,80}\b(?:barberia|barber|corte|cortar|barba|cabello|pelo|"
+    r"cita|agenda|precio|servicio|barbero|horario|hora|ubicacion|direccion|"
+    r"fade|degradado|bigote|ceja|turno|silla|pago)\b"
+)
 
 
 def _normalize(text: str) -> str:
@@ -61,11 +74,9 @@ def is_business_message(text: str, *, has_business_context: bool = False) -> boo
         _TIME_REPLY_RE.fullmatch(normalized) or _DETAIL_REPLY_RE.fullmatch(normalized)
     ):
         return True
-    if _OFF_TOPIC_RE.search(normalized) and not _has_business_term(
-        normalized, _DIRECT_BUSINESS_TERMS
-    ):
+    if _OFF_TOPIC_RE.search(normalized) and not _has_business_term(normalized, _DIRECT_BUSINESS_TERMS):
         return False
-    return _has_business_term(normalized) or bool(
+    return _has_business_term(normalized) or bool(_BUSINESS_INTENT_RE.search(normalized)) or bool(
         re.search(r"\b(?:a las|a la|para las|para el)\s+\d{1,2}(?::\d{2})?\b", normalized)
     )
 
