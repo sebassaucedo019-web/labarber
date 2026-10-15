@@ -80,10 +80,12 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         raw_history = load_history(session, wa_id)
         history = ModelMessagesTypeAdapter.validate_json(raw_history) if raw_history else []
         deps = BotDeps(wa_id=wa_id, db=session)
-        current_date = datetime.now(BUSINESS_TZ).strftime("%Y-%m-%d")
+        current_local = datetime.now(BUSINESS_TZ)
+        current_timestamp = current_local.strftime("%Y-%m-%d %H:%M")
         dated_prompt = (
-            f"[Fecha actual en Chihuahua: {current_date}. "
-            "Interpreta hoy y mañana usando esta fecha.]\n"
+            f"[Fecha y hora actual en Chihuahua: {current_timestamp}. "
+            "Interpreta hoy, mañana y expresiones como 'dentro de dos horas' desde este momento. "
+            "Para una cita redondea al siguiente bloque de 30 minutos y usa formato AAAA-MM-DD HH:MM.]\n"
             f"{prompt}"
         )
         result = asyncio.run(

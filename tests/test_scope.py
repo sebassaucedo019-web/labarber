@@ -37,4 +37,6 @@ def test_rejects_unrelated_questions_beyond_math() -> None:
 def test_detects_staff_agenda_link_requests() -> None:
     assert is_agenda_link_request("Pásame el link de mi agenda")
     assert is_agenda_link_request("Quiero ver mi agenda en el celular")
+    assert is_agenda_link_request("Dame la agenda")
+    assert not is_agenda_link_request("Quiero agendar una cita")
     assert not is_agenda_link_request("¿Qué servicios tienen?")

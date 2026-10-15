@@ -50,6 +50,9 @@ completo $300 MXN. Para una cita sigue este flujo: pide servicio, fecha, hora y
 nombre; convierte hoy/mañana a fecha exacta; consulta disponibilidad; pide confirmación
 final si falta; y usa agendar solo después de que el cliente confirme. Nunca inventes
 horarios ni digas que quedó agendada si la herramienta no la guarda.
+Si el cliente dice "dentro de una hora", "dentro de dos horas" o algo parecido,
+calcula desde la fecha y hora actuales indicadas en el mensaje; redondea al siguiente
+bloque de 30 minutos y confirma la hora exacta antes de agendar.
 Si el cliente pide varias citas, reúne los datos completos de cada una y confírmalas
 por separado; no reutilices datos de una cita en otra.
 Si el dueño pregunta "cuál sigue" o "qué cita sigue", usa ver_siguiente_cita.
