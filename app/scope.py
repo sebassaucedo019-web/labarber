@@ -26,6 +26,15 @@ _FOLLOW_UP_RE = re.compile(
     r"^(si|sí|ok|okay|va|dale|confirmo|confirmar|agendala|agéndala|hazlo|listo)[!.? ]*$",
     re.IGNORECASE,
 )
+_TIME_REPLY_RE = re.compile(
+    r"^(?:a\s+las\s+)?\d{1,2}(?::\d{2})?\s*"
+    r"(?:a\.?\s*m\.?|p\.?\s*m\.?|[ap]\.?|de\s+la\s+(?:manana|tarde|noche))?[!.? ]*$",
+    re.IGNORECASE,
+)
+_DETAIL_REPLY_RE = re.compile(
+    r"^(?:a\s+nombre\s+de|mi\s+nombre\s+es|soy|para)\b.+$",
+    re.IGNORECASE,
+)
 _OFF_TOPIC_RE = re.compile(
     r"\b(?:tarea|matematicas?|ecuacion(?:es)?|suma|resta|multiplicacion|division|"
     r"escuela|clase|examen|program(?:a|acion|ar)|codigo|clima|futbol|noticias|"
@@ -38,7 +47,7 @@ def _normalize(text: str) -> str:
     return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
-def is_business_message(text: str) -> bool:
+def is_business_message(text: str, *, has_business_context: bool = False) -> bool:
     """Return True only for greetings or messages plausibly about the barber shop."""
     normalized = _normalize(text).strip()
     if not normalized:
@@ -46,6 +55,10 @@ def is_business_message(text: str) -> bool:
     if _GREETING_RE.fullmatch(normalized):
         return True
     if _FOLLOW_UP_RE.fullmatch(normalized):
+        return True
+    if has_business_context and (
+        _TIME_REPLY_RE.fullmatch(normalized) or _DETAIL_REPLY_RE.fullmatch(normalized)
+    ):
         return True
     if _OFF_TOPIC_RE.search(normalized) and not _has_business_term(
         normalized, _DIRECT_BUSINESS_TERMS

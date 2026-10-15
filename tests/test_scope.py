@@ -21,6 +21,11 @@ def test_business_context_wins_when_word_is_ambiguous() -> None:
     assert is_business_message("¿Qué hora tienen disponible para mi cita?")
     assert is_business_message("¿Me pueden confirmar para las 5?")
     assert is_business_message("La otra a nombre de Totopo para el viernes mejor")
+    assert is_business_message("5 pm", has_business_context=True)
+    assert is_business_message("5 p", has_business_context=True)
+    assert is_business_message("5 de la tarde", has_business_context=True)
+    assert is_business_message("A nombre de Sofía", has_business_context=True)
+    assert not is_business_message("5 pm")
 
 
 def test_rejects_unrelated_questions_beyond_math() -> None:

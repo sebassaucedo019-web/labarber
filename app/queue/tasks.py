@@ -54,14 +54,15 @@ def process_wa_id(wa_id: str) -> None:
     if is_agenda_link_request(prompt):
         send_text(wa_id, agenda_link_message(wa_id))
         return
-    if not is_business_message(prompt):
-        logger.info("mensaje fuera de alcance ignorado wa_id_hash=%s", hash_wa_id(wa_id))
-        send_text(wa_id, OUT_OF_SCOPE_REPLY)
-        return
     session = get_session()
     try:
+        raw_history = load_history(session, wa_id)
         log_message(session, wa_id, "in", prompt)
-        reply = _run_agent(session, wa_id, prompt)
+        if not is_business_message(prompt, has_business_context=bool(raw_history)):
+            logger.info("mensaje fuera de alcance rechazado wa_id_hash=%s", hash_wa_id(wa_id))
+            reply = OUT_OF_SCOPE_REPLY
+        else:
+            reply = _run_agent(session, wa_id, prompt)
         log_message(session, wa_id, "out", reply)
     finally:
         session.close()
