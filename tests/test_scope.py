@@ -26,6 +26,8 @@ def test_business_context_wins_when_word_is_ambiguous() -> None:
     assert is_business_message("5 de la tarde", has_business_context=True)
     assert is_business_message("A nombre de Sofía", has_business_context=True)
     assert not is_business_message("5 pm")
+    assert is_business_message("Cancela las citas")
+    assert is_business_message("Cancela mi cita de mañana")
 
 
 def test_rejects_unrelated_questions_beyond_math() -> None:
@@ -35,6 +37,8 @@ def test_rejects_unrelated_questions_beyond_math() -> None:
 
 
 def test_detects_staff_agenda_link_requests() -> None:
+    assert is_agenda_link_request("Link")
+    assert is_agenda_link_request("enlace")
     assert is_agenda_link_request("Pásame el link de mi agenda")
     assert is_agenda_link_request("Quiero ver mi agenda en el celular")
     assert is_agenda_link_request("Dame la agenda")

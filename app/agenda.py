@@ -73,6 +73,10 @@ def create_agenda_link(wa_id: str) -> str | None:
 
 def is_agenda_link_request(text: str) -> bool:
     normalized = " ".join(text.lower().split())
+    # Staff often sends only "link" from WhatsApp. Treat only short, explicit
+    # link requests as agenda requests; never confuse "agendar" with "agenda".
+    if re.fullmatch(r"(?:link|enlace|url|liga|pasame el link|dame el link|mandame el enlace)[!.? ]*", normalized):
+        return True
     return re.search(r"\bagenda\b", normalized) is not None and any(
         re.search(pattern, normalized)
         for pattern in (
