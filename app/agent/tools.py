@@ -102,27 +102,41 @@ def _staff_recipient(barber: str) -> str | None:
     return configured if _last10(configured) else None
 
 
-def _notify_staff_of_appointment(appointment: Appointment) -> None:
+def _staff_recipients(appointment: Appointment) -> list[str]:
     settings = get_settings()
-    recipients = [settings.owner_wa_id, _staff_recipient(appointment.barber or "")]
+    recipients = [recipient for recipient in (
+        settings.owner_wa_id,
+        _staff_recipient(appointment.barber or ""),
+    ) if recipient]
     seen: set[str] = set()
-    message = (
-        "Confirmación de cita en BARBER CG 💈\n"
-        f"{_format_appointment(appointment)}\n"
-        f"Cliente: {appointment.customer_name}\n"
-        "La cita quedó confirmada."
-    )
+    unique: list[str] = []
     for recipient in recipients:
         key = _last10(recipient)
         if key and key not in seen:
             seen.add(key)
-            send_text(recipient, message)
+            unique.append(recipient)
+    return unique
+
+
+def _notify_staff(appointment: Appointment, message: str) -> None:
+    for recipient in _staff_recipients(appointment):
+        send_text(recipient, message)
+
+
+def _notify_staff_of_appointment(appointment: Appointment) -> None:
+    _notify_staff(
+        appointment,
+        "Confirmación de cita en BARBER CG 💈\n"
+        f"{_format_appointment(appointment)}\n"
+        f"Cliente: {appointment.customer_name}\n"
+        "La cita quedó confirmada.",
+    )
 
 
 def _staff_access(wa_id: str) -> tuple[bool, str | None]:
     """Dueño ve toda la agenda; cada barbero solo la suya. Clientes no acceden."""
     settings = get_settings()
-    caller = wa_id[-10:]
+    caller = _last10(wa_id)
     if settings.owner_wa_id and caller == _last10(settings.owner_wa_id):
         return True, None
     access = {
@@ -247,6 +261,12 @@ def cancelar_cita(ctx: RunContext[BotDeps], fecha_hora: str) -> str:
         return "No se puede cancelar con menos de 3 horas de anticipación."
     appointment.status = "cancelled"
     ctx.deps.db.commit()
+    _notify_staff(
+        appointment,
+        "Cita cancelada en BARBER CG 💈\n"
+        f"{_format_appointment(appointment)}\n"
+        f"Cliente: {appointment.customer_name}",
+    )
     return "Tu cita fue cancelada correctamente."
 
 
@@ -270,8 +290,17 @@ def reagendar_cita(ctx: RunContext[BotDeps], fecha_actual: str, fecha_nueva: str
         Appointment.barber == appointment.barber,
         Appointment.status == "confirmed")):
         return "El nuevo horario ya está ocupado."
+    old_starts_at = appointment.starts_at
     appointment.starts_at = new
     ctx.deps.db.commit()
+    _notify_staff(
+        appointment,
+        "Cita reagendada en BARBER CG 💈\n"
+        f"Antes: {old_starts_at:%d/%m/%Y %H:%M}\n"
+        f"Ahora: {new:%d/%m/%Y %H:%M}\n"
+        f"Cliente: {appointment.customer_name}\n"
+        f"Barbero: {appointment.barber}",
+    )
     return f"Cita reagendada para el {new:%d/%m/%Y} a las {new:%H:%M}."
 
 

@@ -10,6 +10,7 @@ from app.agent.tools import (
     _notify_staff_of_appointment,
     agendar,
     cancelar_cita,
+    reagendar_cita,
     ver_agenda,
     ver_siguiente_cita,
 )
@@ -139,4 +140,37 @@ def test_confirmed_appointment_notifies_owner_and_assigned_barber(
 
     assert {recipient for recipient, _ in sent} == {"5216110000000", "5216111111111"}
     assert all("La cita quedó confirmada" in message for _, message in sent)
+    get_settings.cache_clear()
+
+
+def test_cancel_and_reschedule_notify_staff(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_staff_ids(monkeypatch)
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.agent.tools.send_text",
+        lambda recipient, message: sent.append((recipient, message)),
+    )
+    session, deps = make_deps("5216999999999")
+    first = datetime.now() + timedelta(days=2)
+    first = first.replace(hour=10, minute=0, second=0, microsecond=0)
+    second = first.replace(hour=11)
+    session.add(Appointment(
+        wa_id=deps.wa_id,
+        customer_name="Ana",
+        service="corte normal",
+        barber="Obed",
+        starts_at=first,
+    ))
+    session.commit()
+
+    result = reagendar_cita(
+        as_ctx(deps), first.strftime("%Y-%m-%d %H:%M"), second.strftime("%Y-%m-%d %H:%M")
+    )
+    assert "reagendada" in result
+    assert any("reagendada" in message for _, message in sent)
+
+    sent.clear()
+    result = cancelar_cita(as_ctx(deps), second.strftime("%Y-%m-%d %H:%M"))
+    assert "cancelada" in result
+    assert any("cancelada" in message for _, message in sent)
     get_settings.cache_clear()

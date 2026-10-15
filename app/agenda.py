@@ -119,6 +119,7 @@ def agenda_page(token: str = Query(default="")) -> str:
         return HTMLResponse(
             "<h1>Enlace no válido</h1><p>Solicita un enlace nuevo desde WhatsApp.</p>",
             status_code=403,
+            headers={"Cache-Control": "no-store"},
         )
     now = datetime.now(BUSINESS_TZ).replace(tzinfo=None)
     conditions = [Appointment.starts_at >= now, Appointment.status == "confirmed"]
@@ -133,7 +134,7 @@ def agenda_page(token: str = Query(default="")) -> str:
         session.close()
     title = "Agenda general" if scope == "all" else f"Agenda de {scope}"
     content = "".join(_format_row(row) for row in rows) or "<p class='empty'>No hay citas próximas.</p>"
-    return f"""<!doctype html>
+    return HTMLResponse(f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} | BARBER CG</title>
 <style>
@@ -144,4 +145,4 @@ h1 {{ margin:0 0 6px; font-size:24px; }} header p {{ margin:0; opacity:.8; }}
 .appointment {{ background:white; border:1px solid #dce4de; border-left:5px solid #3d8b70; border-radius:12px; padding:15px; margin:10px 0; display:grid; gap:5px; box-shadow:0 2px 8px #173b3110; }}
 .appointment strong {{ font-size:23px; color:#17664d; }} .appointment span {{ font-weight:600; }}
 .appointment small {{ color:#63716a; font-size:14px; }} .empty {{ background:white; padding:20px; border-radius:12px; color:#63716a; }}
-</style></head><body><main><header><h1>💈 {html.escape(title)}</h1><p>BARBER CG · Próximas citas</p></header>{content}</main></body></html>"""
+</style></head><body><main><header><h1>💈 {html.escape(title)}</h1><p>BARBER CG · Próximas citas</p></header>{content}</main></body></html>""", headers={"Cache-Control": "no-store"})
