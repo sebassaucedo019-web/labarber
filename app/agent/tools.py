@@ -79,10 +79,13 @@ def consultar_disponibilidad(ctx: RunContext[BotDeps], fecha: str, barbero: str)
         Appointment.status == "confirmed",
     ).order_by(Appointment.starts_at)).all()
     occupied = {row.starts_at.strftime("%H:%M") for row in rows}
+    now = _now()
     available = [
-        (start + timedelta(minutes=30 * i)).strftime("%H:%M")
+        candidate.strftime("%H:%M")
         for i in range(22)
-        if (start + timedelta(minutes=30 * i)).strftime("%H:%M") not in occupied
+        for candidate in (start + timedelta(minutes=30 * i),)
+        if candidate.strftime("%H:%M") not in occupied
+        and (day != now.date() or candidate > now)
     ]
     return f"Horarios disponibles para {fecha}: {', '.join(available) or 'no hay espacios'}."
 

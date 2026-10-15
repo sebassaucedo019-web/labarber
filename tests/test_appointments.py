@@ -10,6 +10,7 @@ from app.agent.tools import (
     _notify_staff_of_appointment,
     agendar,
     cancelar_cita,
+    consultar_disponibilidad,
     reagendar_cita,
     ver_agenda,
     ver_siguiente_cita,
@@ -174,3 +175,16 @@ def test_cancel_and_reschedule_notify_staff(monkeypatch: pytest.MonkeyPatch) -> 
     assert "cancelada" in result
     assert any("cancelada" in message for _, message in sent)
     get_settings.cache_clear()
+
+
+def test_availability_does_not_offer_past_slots_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agent import tools
+
+    session, deps = make_deps()
+    monkeypatch.setattr(tools, "_now", lambda: datetime(2026, 10, 15, 15, 15))
+
+    result = consultar_disponibilidad(as_ctx(deps), "2026-10-15", "Obed")
+
+    assert "09:00" not in result
+    assert "15:00" not in result
+    assert "15:30" in result
