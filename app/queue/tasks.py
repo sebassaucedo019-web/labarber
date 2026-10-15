@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.agent import get_agent
 from app.agent.deps import BotDeps
+from app.agenda import agenda_link_message, is_agenda_link_request
 from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
@@ -50,6 +51,9 @@ def process_wa_id(wa_id: str) -> None:
         return
 
     prompt = "\n".join(messages)
+    if is_agenda_link_request(prompt):
+        send_text(wa_id, agenda_link_message(wa_id))
+        return
     if not is_business_message(prompt):
         logger.info("mensaje fuera de alcance ignorado wa_id_hash=%s", hash_wa_id(wa_id))
         send_text(wa_id, OUT_OF_SCOPE_REPLY)

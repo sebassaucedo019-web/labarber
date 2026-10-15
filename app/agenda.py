@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import html
 import json
+import re
 import time
 from datetime import datetime
 from urllib.parse import quote
@@ -66,6 +67,21 @@ def create_agenda_link(wa_id: str) -> str | None:
     signature = _encode(hmac.new(secret, payload.encode(), hashlib.sha256).digest())
     base_url = (get_settings().public_base_url or "").rstrip("/")
     return f"{base_url}/agenda?token={quote(payload + '.' + signature)}" if base_url else None
+
+
+def is_agenda_link_request(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    return "agenda" in normalized and any(
+        re.search(pattern, normalized)
+        for pattern in (r"\bmi\b", r"\blink\b", r"\benlace\b", r"\bcelular\b", r"\bweb\b")
+    )
+
+
+def agenda_link_message(wa_id: str) -> str:
+    link = create_agenda_link(wa_id)
+    if link is None:
+        return "Esta función está disponible únicamente para el dueño o los barberos de BARBER CG."
+    return f"Aquí tienes tu agenda en el celular (el enlace dura 24 horas):\n{link}"
 
 
 def _verify_token(token: str) -> str | None:
