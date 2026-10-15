@@ -42,32 +42,37 @@ def buffer_inbound(wa_id: str, message_id: str, text: str) -> None:
 
 def process_wa_id(wa_id: str) -> None:
     """Job que dispara el debounce: junta los mensajes pendientes y corre el agente."""
-    if not check_rate_limit(wa_id):
-        logger.warning("rate limit excedido wa_id_hash=%s", hash_wa_id(wa_id))
-        return
-
-    messages = pop_pending_messages(wa_id)
-    if not messages:
-        return
-
-    prompt = "\n".join(messages)
-    if is_agenda_link_request(prompt):
-        send_text(wa_id, agenda_link_message(wa_id))
-        return
-    session = get_session()
     try:
-        raw_history = load_history(session, wa_id)
-        log_message(session, wa_id, "in", prompt)
-        if not is_business_message(prompt, has_business_context=bool(raw_history)):
-            logger.info("mensaje fuera de alcance rechazado wa_id_hash=%s", hash_wa_id(wa_id))
-            reply = OUT_OF_SCOPE_REPLY
-        else:
-            reply = _run_agent(session, wa_id, prompt)
-        log_message(session, wa_id, "out", reply)
-    finally:
-        session.close()
+        if not check_rate_limit(wa_id):
+            logger.warning("rate limit excedido wa_id_hash=%s", hash_wa_id(wa_id))
+            return
 
-    send_text(wa_id, reply)
+        messages = pop_pending_messages(wa_id)
+        if not messages:
+            return
+
+        prompt = "\n".join(messages)
+        if is_agenda_link_request(prompt):
+            send_text(wa_id, agenda_link_message(wa_id))
+            return
+        session = get_session()
+        try:
+            raw_history = load_history(session, wa_id)
+            log_message(session, wa_id, "in", prompt)
+            if not is_business_message(prompt, has_business_context=bool(raw_history)):
+                logger.info("mensaje fuera de alcance rechazado wa_id_hash=%s", hash_wa_id(wa_id))
+                reply = OUT_OF_SCOPE_REPLY
+            else:
+                reply = _run_agent(session, wa_id, prompt)
+            log_message(session, wa_id, "out", reply)
+        finally:
+            session.close()
+
+        send_text(wa_id, reply)
+    except Exception:
+        # A broken DB/Redis job must not take the worker down permanently.
+        logger.exception("fallo procesando mensaje wa_id_hash=%s", hash_wa_id(wa_id))
+        send_text(wa_id, FALLBACK_REPLY)
 
 
 def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
@@ -93,5 +98,6 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         logger.warning("timeout del LLM wa_id_hash=%s", hash_wa_id(wa_id))
         return FALLBACK_REPLY
     except Exception:
+        session.rollback()
         logger.exception("error corriendo el agente wa_id_hash=%s", hash_wa_id(wa_id))
         return FALLBACK_REPLY
