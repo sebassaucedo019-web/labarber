@@ -16,7 +16,7 @@ from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
 from app.sender import send_text, send_welcome_buttons
 from app.safety import sanitize_reply
-from app.scope import is_business_message, is_greeting
+from app.scope import is_greeting
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
 
@@ -24,10 +24,6 @@ logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT_SECONDS = 25
 FALLBACK_REPLY = "Dame un segundo que lo estoy pensando, ya te respondo 🙂"
-OUT_OF_SCOPE_REPLY = (
-    "Puedo ayudarte únicamente con los servicios y citas de BARBER CG 💈 "
-    "¿Quieres ver precios o agendar?"
-)
 BUSINESS_TZ = ZoneInfo("America/Chihuahua")
 
 
@@ -57,18 +53,16 @@ def process_wa_id(wa_id: str) -> None:
             return
         session = get_session()
         try:
-            raw_history = load_history(session, wa_id)
             log_message(session, wa_id, "in", prompt)
             if is_greeting(prompt):
                 reply = "¡Hola! Bienvenido a BARBER CG 💈"
                 log_message(session, wa_id, "out", reply)
                 send_welcome_buttons(wa_id)
                 return
-            if not is_business_message(prompt, has_business_context=bool(raw_history)):
-                logger.info("mensaje fuera de alcance rechazado wa_id_hash=%s", hash_wa_id(wa_id))
-                reply = OUT_OF_SCOPE_REPLY
-            else:
-                reply = _run_agent(session, wa_id, prompt)
+            # Every message reaches the agent. A keyword gate rejected valid
+            # barber questions written with slang, typos, or missing context.
+            # The system prompt is the single scope and safety decision point.
+            reply = _run_agent(session, wa_id, prompt)
             log_message(session, wa_id, "out", reply)
         finally:
             session.close()
