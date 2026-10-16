@@ -28,7 +28,11 @@ _DIRECT_BUSINESS_TERMS = tuple(
     if term not in {"hoy", "manana", "pasado manana", "dia", "hora", "silla"}
 )
 
-_GREETING_RE = re.compile(r"^(hola|hey|buenas(?: tardes| dias| noches)?|que onda|buen dia)[!.? ]*$")
+_GREETING_RE = re.compile(
+    r"^(?:h+o+l+a+|o+l+a+|holi+|hey+|hello+|hi+|buenas(?:\s+(?:tardes|dias|noches))?|"
+    r"buen dia|buenos dias|saludos|que onda|que tal|que rollo|que tranza|"
+    r"como estas|como andas)[!.? ]*$"
+)
 _FOLLOW_UP_RE = re.compile(
     r"^(si|sí|ok|okay|va|dale|confirmo|confirmar|agendala|agéndala|hazlo|listo)[!.? ]*$",
     re.IGNORECASE,
