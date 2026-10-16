@@ -273,8 +273,13 @@ def cancelar_cita(ctx: RunContext[BotDeps], fecha_hora: str) -> str:
     return "Tu cita fue cancelada correctamente."
 
 
-def reagendar_cita(ctx: RunContext[BotDeps], fecha_actual: str, fecha_nueva: str) -> str:
-    """Mueve una cita propia a un horario libre."""
+def reagendar_cita(
+    ctx: RunContext[BotDeps],
+    fecha_actual: str,
+    fecha_nueva: str,
+    nuevo_barbero: str | None = None,
+) -> str:
+    """Mueve una cita propia, incluso a otro barbero, si el horario está libre."""
     old = _parse_datetime(fecha_actual)
     new = _parse_datetime(fecha_nueva)
     if old is None or new is None:
@@ -286,15 +291,22 @@ def reagendar_cita(ctx: RunContext[BotDeps], fecha_actual: str, fecha_nueva: str
     ))
     if appointment is None:
         return "No encontré una cita confirmada en el horario actual."
+    target_barber = appointment.barber
+    if nuevo_barbero:
+        target_barber = _barber_key(nuevo_barbero)
+        if target_barber is None:
+            return "Elige uno de estos barberos: Obed, Jesús o Yadier."
     if not _valid_slot(new) or new <= _now():
         return "El nuevo horario debe estar entre 09:00 y 19:30 y ser futuro."
     if ctx.deps.db.scalar(select(Appointment).where(
         Appointment.starts_at == new,
-        Appointment.barber == appointment.barber,
+        Appointment.barber == target_barber,
         Appointment.status == "confirmed")):
         return "El nuevo horario ya está ocupado."
     old_starts_at = appointment.starts_at
+    old_barber = appointment.barber
     appointment.starts_at = new
+    appointment.barber = target_barber
     ctx.deps.db.commit()
     _notify_staff(
         appointment,
@@ -304,7 +316,18 @@ def reagendar_cita(ctx: RunContext[BotDeps], fecha_actual: str, fecha_nueva: str
         f"Cliente: {appointment.customer_name}\n"
         f"Barbero: {appointment.barber}",
     )
-    return f"Cita reagendada para el {new:%d/%m/%Y} a las {new:%H:%M}."
+    if old_barber and old_barber != target_barber:
+        old_recipient = _staff_recipient(old_barber)
+        new_recipients = {_last10(recipient) for recipient in _staff_recipients(appointment)}
+        if old_recipient and _last10(old_recipient) not in new_recipients:
+            send_text(
+                old_recipient,
+                "Cambio de cita en BARBER CG 💈\n"
+                f"La cita de {appointment.customer_name} pasó de {old_barber} a {target_barber}.\n"
+                f"Nueva fecha: {new:%d/%m/%Y %H:%M}.",
+            )
+    barber_note = f" con {target_barber}" if target_barber else ""
+    return f"Cita reagendada para el {new:%d/%m/%Y} a las {new:%H:%M}{barber_note}."
 
 
 def escalar_humano(ctx: RunContext[BotDeps], motivo: str) -> str:

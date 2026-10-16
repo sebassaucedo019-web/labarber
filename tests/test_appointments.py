@@ -177,6 +177,38 @@ def test_cancel_and_reschedule_notify_staff(monkeypatch: pytest.MonkeyPatch) -> 
     get_settings.cache_clear()
 
 
+def test_reschedule_can_change_barber_and_notifies_new_staff(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_staff_ids(monkeypatch)
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.agent.tools.send_text",
+        lambda recipient, message: sent.append((recipient, message)),
+    )
+    session, deps = make_deps("5216999999999")
+    first = datetime.now() + timedelta(days=2)
+    first = first.replace(hour=10, minute=0, second=0, microsecond=0)
+    second = first.replace(hour=11)
+    session.add(Appointment(
+        wa_id=deps.wa_id,
+        customer_name="Ana",
+        service="corte normal",
+        barber="Jesús",
+        starts_at=first,
+    ))
+    session.commit()
+
+    result = reagendar_cita(
+        as_ctx(deps), first.strftime("%Y-%m-%d %H:%M"), second.strftime("%Y-%m-%d %H:%M"), "Obed"
+    )
+
+    assert "con Obed" in result
+    saved = session.scalar(select(Appointment).where(Appointment.wa_id == deps.wa_id))
+    assert saved is not None and saved.barber == "Obed"
+    recipients = {recipient for recipient, _ in sent}
+    assert {"5216110000000", "5216111111111", "5216112222222"} == recipients
+    get_settings.cache_clear()
+
+
 def test_availability_does_not_offer_past_slots_today(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.agent import tools
 

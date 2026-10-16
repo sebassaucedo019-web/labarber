@@ -38,7 +38,7 @@
 - P: Que servicios tienen?
   R: BARBER CG ofrece corte normal ($120), corte clasico ($150), barba y corte ($200), y servicio completo ($300).
 - P: Puedo cambiar mi cita?
-  R: Si. El bot consulta la disponibilidad y propone otro horario antes de confirmar el cambio.
+  R: Sí. El bot consulta la disponibilidad y puede cambiar fecha, hora o barbero antes de confirmar el cambio.
 - P: Puedo cancelar mi cita?
   R: El bot busca la cita del cliente y solicita confirmacion antes de cancelarla.
 
