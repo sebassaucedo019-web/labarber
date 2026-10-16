@@ -198,6 +198,22 @@ def obtener_enlace_agenda(ctx: RunContext[BotDeps]) -> str:
     return agenda_link_message(ctx.deps.wa_id)
 
 
+def consultar_mi_cita(ctx: RunContext[BotDeps]) -> str:
+    """Muestra al cliente sus próximas citas sin exponer la agenda de otros."""
+    rows = ctx.deps.db.scalars(
+        select(Appointment).where(
+            Appointment.wa_id == ctx.deps.wa_id,
+            Appointment.starts_at >= _now(),
+            Appointment.status == "confirmed",
+        ).order_by(Appointment.starts_at).limit(5)
+    ).all()
+    if not rows:
+        return "No encontré citas próximas a tu nombre o número."
+    return "Tus próximas citas son:\n" + "\n".join(
+        f"• {_format_appointment(row)}" for row in rows
+    )
+
+
 def agendar(ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: str, barbero: str) -> str:
     """Guarda una cita tras validar servicio, horario y disponibilidad."""
     starts_at = _parse_datetime(fecha_hora)

@@ -11,6 +11,7 @@ from app.agent.tools import (
     agendar,
     cancelar_cita,
     consultar_disponibilidad,
+    consultar_mi_cita,
     reagendar_cita,
     ver_agenda,
     ver_siguiente_cita,
@@ -73,6 +74,32 @@ def test_cliente_no_ve_agenda(monkeypatch: pytest.MonkeyPatch) -> None:
     session, deps = make_deps("5216999999999")
     assert "únicamente" in ver_agenda(as_ctx(deps))
     get_settings.cache_clear()
+
+
+def test_cliente_consulta_solo_sus_citas() -> None:
+    session, deps = make_deps("5216140000001")
+    when = datetime.now() + timedelta(days=1)
+    when = when.replace(hour=10, minute=0, second=0, microsecond=0)
+    session.add(Appointment(
+        wa_id=deps.wa_id,
+        customer_name="Ana",
+        service="corte normal",
+        barber="Obed",
+        starts_at=when,
+    ))
+    session.add(Appointment(
+        wa_id="5216140000002",
+        customer_name="Luis",
+        service="corte clásico",
+        barber="Yadier",
+        starts_at=when.replace(hour=11),
+    ))
+    session.commit()
+
+    result = consultar_mi_cita(as_ctx(deps))
+
+    assert "Ana" in result
+    assert "Luis" not in result
 
 
 def test_dueno_ve_todas_y_barbero_solo_las_suyas(monkeypatch: pytest.MonkeyPatch) -> None:

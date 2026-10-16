@@ -12,6 +12,7 @@ from app.agent.tools import (
     agendar,
     cancelar_cita,
     consultar_disponibilidad,
+    consultar_mi_cita,
     escalar_humano,
     obtener_enlace_agenda,
     reagendar_cita,
@@ -60,6 +61,7 @@ Si el cambio requiere escoger entre varias opciones, pregunta antes.
 Si el cliente pide varias citas, reúne los datos completos de cada una y confírmalas
 por separado; no reutilices datos de una cita en otra.
 Si el dueño pregunta "cuál sigue" o "qué cita sigue", usa ver_siguiente_cita.
+Si un cliente pregunta por su cita, usa consultar_mi_cita; nunca le muestres citas de otra persona.
 Si el dueño pide ver todas las citas, usa ver_agenda.
 Si un barbero pide su agenda, usa ver_agenda; solo verá las suyas.
 Si el dueño o un barbero pide ver la agenda en su celular, usa obtener_enlace_agenda.
@@ -102,6 +104,7 @@ AGENT: Agent[BotDeps, str] = Agent(
     system_prompt=_build_system_prompt(),
     tools=[
         consultar_disponibilidad,
+        consultar_mi_cita,
         agendar,
         cancelar_cita,
         reagendar_cita,
