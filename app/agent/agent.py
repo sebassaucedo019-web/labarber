@@ -14,6 +14,7 @@ from app.agent.tools import (
     consultar_disponibilidad,
     consultar_mi_cita,
     escalar_humano,
+    mostrar_menu_principal,
     obtener_enlace_agenda,
     reagendar_cita,
     ver_agenda,
@@ -38,10 +39,11 @@ ortografía, usan modismos mexicanos, mezclan varios mensajes o no contienen la 
 con la barbería. Si parece relacionada pero falta información, haz una pregunta breve
 para aclararla; no uses el rechazo de tema ajeno como respuesta automática.
 
-Si es el primer mensaje del cliente o solo saluda, dale esta bienvenida en un solo
-mensaje: "¡Hola! Bienvenido a BARBER CG 💈 Soy el asistente de la barbería. Tenemos
-corte normal, corte clásico, barba y corte, y servicio completo. ¿Quieres conocer
-los precios o agendar tu cita?" Después continúa según lo que responda.
+Si el usuario está saludando o dando la bienvenida, sin importar si escribe "hola",
+"buenas", "qué onda", "hey", "saludos", con errores, abreviaciones o alargando
+letras, usa la herramienta mostrar_menu_principal. Esa herramienta ya envía los
+botones "Ver servicios", "Agendar cita" y "Consultar mi cita". Después de usarla,
+no escribas otra respuesta de texto.
 
 Si puedes resolver algo con una herramienta, úsala en vez de inventar la respuesta.
 Si no puedes resolver lo que pide el usuario, o pide hablar con una persona, usa la
@@ -111,6 +113,7 @@ AGENT: Agent[BotDeps, str] = Agent(
     tools=[
         consultar_disponibilidad,
         consultar_mi_cita,
+        mostrar_menu_principal,
         agendar,
         cancelar_cita,
         reagendar_cita,

@@ -14,9 +14,9 @@ from app.agenda import agenda_link_message, is_agenda_link_request
 from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
-from app.sender import send_text, send_welcome_buttons
+from app.sender import send_text
 from app.safety import sanitize_reply
-from app.scope import is_greeting
+from app.agent.tools import MENU_SENTINEL
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
 
@@ -54,11 +54,6 @@ def process_wa_id(wa_id: str) -> None:
         session = get_session()
         try:
             log_message(session, wa_id, "in", prompt)
-            if is_greeting(prompt):
-                reply = "¡Hola! Bienvenido a BARBER CG 💈"
-                log_message(session, wa_id, "out", reply)
-                send_welcome_buttons(wa_id)
-                return
             # Every message reaches the agent. A keyword gate rejected valid
             # barber questions written with slang, typos, or missing context.
             # The system prompt is the single scope and safety decision point.
@@ -67,7 +62,8 @@ def process_wa_id(wa_id: str) -> None:
         finally:
             session.close()
 
-        send_text(wa_id, reply)
+        if reply != MENU_SENTINEL:
+            send_text(wa_id, reply)
     except Exception:
         # A broken DB/Redis job must not take the worker down permanently.
         logger.exception("fallo procesando mensaje wa_id_hash=%s", hash_wa_id(wa_id))

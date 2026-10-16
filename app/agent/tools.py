@@ -8,7 +8,7 @@ from app.agent.deps import BotDeps
 from app.agenda import agenda_link_message
 from app.config import get_settings
 from app.escalation import notify_human
-from app.sender import send_text
+from app.sender import send_text, send_welcome_buttons
 from app.store.models import Appointment
 
 SERVICES = {
@@ -19,6 +19,7 @@ SERVICES = {
     "servicio completo": 300,
 }
 BARBERS = {"obed": "Obed", "jesus": "Jesús", "yadier": "Yadier"}
+MENU_SENTINEL = "__BARBER_CG_MENU_SENT__"
 OPEN_HOUR = 9
 CLOSE_HOUR = 20
 BUSINESS_TZ = ZoneInfo("America/Chihuahua")
@@ -196,6 +197,12 @@ def ver_agenda(ctx: RunContext[BotDeps]) -> str:
 def obtener_enlace_agenda(ctx: RunContext[BotDeps]) -> str:
     """Genera un enlace móvil temporal para el dueño o el barbero autenticado."""
     return agenda_link_message(ctx.deps.wa_id)
+
+
+def mostrar_menu_principal(ctx: RunContext[BotDeps]) -> str:
+    """Muestra botones cuando la IA identifica un saludo o bienvenida."""
+    send_welcome_buttons(ctx.deps.wa_id)
+    return MENU_SENTINEL
 
 
 def consultar_mi_cita(ctx: RunContext[BotDeps]) -> str:
