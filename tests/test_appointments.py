@@ -206,6 +206,8 @@ def test_reschedule_can_change_barber_and_notifies_new_staff(monkeypatch: pytest
     assert saved is not None and saved.barber == "Obed"
     recipients = {recipient for recipient, _ in sent}
     assert {"5216110000000", "5216111111111", "5216112222222"} == recipients
+    assert any("Cambio de barbero" in message for _, message in sent)
+    assert all("Antes:" not in message for _, message in sent if "Cambio de barbero" in message)
     get_settings.cache_clear()
 
 

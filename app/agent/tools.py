@@ -308,13 +308,32 @@ def reagendar_cita(
     appointment.starts_at = new
     appointment.barber = target_barber
     ctx.deps.db.commit()
+    if old_starts_at == new and old_barber != target_barber:
+        staff_message = (
+            "Cambio de barbero en BARBER CG 💈\n"
+            f"Cliente: {appointment.customer_name}\n"
+            f"Horario: {new:%d/%m/%Y %H:%M}\n"
+            f"Barbero anterior: {old_barber}\n"
+            f"Barbero nuevo: {target_barber}"
+        )
+    elif old_starts_at != new and old_barber == target_barber:
+        staff_message = (
+            "Cita reagendada en BARBER CG 💈\n"
+            f"Cliente: {appointment.customer_name}\n"
+            f"Antes: {old_starts_at:%d/%m/%Y %H:%M}\n"
+            f"Ahora: {new:%d/%m/%Y %H:%M}\n"
+            f"Barbero: {target_barber}"
+        )
+    else:
+        staff_message = (
+            "Cita actualizada en BARBER CG 💈\n"
+            f"Cliente: {appointment.customer_name}\n"
+            f"Antes: {old_starts_at:%d/%m/%Y %H:%M} con {old_barber}\n"
+            f"Ahora: {new:%d/%m/%Y %H:%M} con {target_barber}"
+        )
     _notify_staff(
         appointment,
-        "Cita reagendada en BARBER CG 💈\n"
-        f"Antes: {old_starts_at:%d/%m/%Y %H:%M}\n"
-        f"Ahora: {new:%d/%m/%Y %H:%M}\n"
-        f"Cliente: {appointment.customer_name}\n"
-        f"Barbero: {appointment.barber}",
+        staff_message,
     )
     if old_barber and old_barber != target_barber:
         old_recipient = _staff_recipient(old_barber)
