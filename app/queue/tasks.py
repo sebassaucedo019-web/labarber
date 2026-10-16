@@ -90,6 +90,8 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
             )
         )
         save_history(session, wa_id, result.all_messages_json())
+        if deps.menu_sent:
+            return MENU_SENTINEL
         return sanitize_reply(str(result.output))
     except TimeoutError:
         logger.warning("timeout del LLM wa_id_hash=%s", hash_wa_id(wa_id))

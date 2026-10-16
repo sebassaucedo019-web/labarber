@@ -7,3 +7,4 @@ from sqlalchemy.orm import Session
 class BotDeps:
     wa_id: str
     db: Session
+    menu_sent: bool = False

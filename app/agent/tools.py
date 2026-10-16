@@ -202,6 +202,7 @@ def obtener_enlace_agenda(ctx: RunContext[BotDeps]) -> str:
 def mostrar_menu_principal(ctx: RunContext[BotDeps]) -> str:
     """Muestra botones cuando la IA identifica un saludo o bienvenida."""
     send_welcome_buttons(ctx.deps.wa_id)
+    ctx.deps.menu_sent = True
     return MENU_SENTINEL
 
 
