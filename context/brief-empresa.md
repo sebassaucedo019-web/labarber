@@ -20,7 +20,11 @@
   - Cancelar citas.
   - Responder preguntas frecuentes de la barberia.
   - Escalar la conversacion a una persona cuando sea necesario.
-- Casos de uso que NO cubre: Pendiente de definir con el responsable del negocio.
+- Casos de uso que NO cubre: tareas escolares, matemáticas, programación, clima,
+  noticias, deportes, traducciones, recetas y preguntas personales no relacionadas
+  con BARBER CG. Si una pregunta sí tiene relación con la barbería, debe responderla
+  o pedir el dato que falte, aunque el cliente escriba con errores o use una frase
+  corta.
 
 ## Productos / servicios
 

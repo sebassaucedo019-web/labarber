@@ -45,7 +45,7 @@ _DETAIL_REPLY_RE = re.compile(
 _OFF_TOPIC_RE = re.compile(
     r"\b(?:tarea|matematicas?|ecuacion(?:es)?|suma|resta|multiplicacion|division|"
     r"escuela|clase|examen|program(?:a|acion|ar)|codigo|clima|futbol|noticias|"
-    r"receta|cancion|lyrics|poema|traduce|ingles)\b"
+    r"receta|cancion|lyrics|poema|traduce|ingles|resuelve|calcula|problema)\b"
 )
 _BUSINESS_INTENT_RE = re.compile(
     r"\b(?:quiero|necesito|busco|puedo|pueden|tienen|hay|me gustaria|me gustaria|"
@@ -76,6 +76,11 @@ def is_business_message(text: str, *, has_business_context: bool = False) -> boo
         return True
     if _OFF_TOPIC_RE.search(normalized) and not _has_business_term(normalized, _DIRECT_BUSINESS_TERMS):
         return False
+    # Once the conversation is clearly about the barber shop, allow natural
+    # follow-ups such as "y qué más?", "cómo le hago?" or "y luego?". The
+    # explicit off-topic guard above still blocks math, school, weather, etc.
+    if has_business_context:
+        return True
     return _has_business_term(normalized) or bool(_BUSINESS_INTENT_RE.search(normalized)) or bool(
         re.search(r"\b(?:a las|a la|para las|para el)\s+\d{1,2}(?::\d{2})?\b", normalized)
     )
