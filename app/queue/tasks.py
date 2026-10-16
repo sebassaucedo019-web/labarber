@@ -14,9 +14,9 @@ from app.agenda import agenda_link_message, is_agenda_link_request
 from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
-from app.sender import send_text
+from app.sender import send_text, send_welcome_buttons
 from app.safety import sanitize_reply
-from app.scope import is_business_message
+from app.scope import is_business_message, is_greeting
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
 
@@ -59,6 +59,11 @@ def process_wa_id(wa_id: str) -> None:
         try:
             raw_history = load_history(session, wa_id)
             log_message(session, wa_id, "in", prompt)
+            if not raw_history and is_greeting(prompt):
+                reply = "¡Hola! Bienvenido a BARBER CG 💈"
+                log_message(session, wa_id, "out", reply)
+                send_welcome_buttons(wa_id)
+                return
             if not is_business_message(prompt, has_business_context=bool(raw_history)):
                 logger.info("mensaje fuera de alcance rechazado wa_id_hash=%s", hash_wa_id(wa_id))
                 reply = OUT_OF_SCOPE_REPLY

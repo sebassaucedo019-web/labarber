@@ -1,10 +1,12 @@
-from app.scope import is_business_message
+from app.scope import is_business_message, is_greeting
 from app.agenda import is_agenda_link_request
 
 
 def test_ignores_unrelated_homework() -> None:
     assert not is_business_message("Ayúdame con mi tarea de matemáticas")
     assert not is_business_message("5x5")
+    assert is_greeting("Hola")
+    assert not is_greeting("Hola, quiero una cita")
 
 
 def test_allows_barber_messages_and_greetings() -> None:

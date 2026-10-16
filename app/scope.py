@@ -61,6 +61,10 @@ def _normalize(text: str) -> str:
     return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
+def is_greeting(text: str) -> bool:
+    return bool(_GREETING_RE.fullmatch(_normalize(text).strip()))
+
+
 def is_business_message(text: str, *, has_business_context: bool = False) -> bool:
     """Return True only for greetings or messages plausibly about the barber shop."""
     normalized = _normalize(text).strip()
