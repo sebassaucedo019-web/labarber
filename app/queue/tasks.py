@@ -59,7 +59,7 @@ def process_wa_id(wa_id: str) -> None:
         try:
             raw_history = load_history(session, wa_id)
             log_message(session, wa_id, "in", prompt)
-            if not raw_history and is_greeting(prompt):
+            if is_greeting(prompt):
                 reply = "¡Hola! Bienvenido a BARBER CG 💈"
                 log_message(session, wa_id, "out", reply)
                 send_welcome_buttons(wa_id)
