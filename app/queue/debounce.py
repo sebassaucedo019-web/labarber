@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from rq import Queue
 from rq.job import Job
 
-from app.config import get_settings
 from app.queue.client import get_queue
 from app.store.redis_store import get_redis
 
@@ -22,13 +19,10 @@ def schedule_processing(wa_id: str) -> None:
             previous_job_id = previous_job_id.decode()
         _cancel(queue, str(previous_job_id))
 
-    # RQ Scheduler waits for the quiet period before running the job. The worker
-    # starts with its scheduler enabled, so consecutive messages become one turn.
-    job = queue.enqueue_in(
-        timedelta(seconds=get_settings().debounce_seconds),
-        "app.queue.tasks.process_wa_id",
-        wa_id,
-    )
+    # Enqueue immediately. The processing job waits the quiet period itself;
+    # this works with SimpleWorker on Railway and does not depend on the
+    # scheduler polling scheduled jobs.
+    job = queue.enqueue("app.queue.tasks.process_wa_id", wa_id)
     r.set(f"debounce:{wa_id}", job.id, ex=30)
 
 

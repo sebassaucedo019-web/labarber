@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,7 @@ from app.safety import contains_banned_language, sanitize_reply
 from app.agent.tools import MENU_SENTINEL
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ def buffer_inbound(wa_id: str, message_id: str, text: str) -> None:
 def process_wa_id(wa_id: str) -> None:
     """Job que dispara el debounce: junta los mensajes pendientes y corre el agente."""
     try:
+        time.sleep(max(0.0, get_settings().debounce_seconds))
         messages = pop_pending_messages(wa_id)
         if not messages:
             return
