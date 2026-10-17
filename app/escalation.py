@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import UTC, datetime
 
 import httpx
@@ -8,9 +9,19 @@ from app.observability import hash_wa_id
 
 logger = logging.getLogger(__name__)
 
+_REAL_ESCALATION_RE = re.compile(
+    r"\b(?:hablar con (?:una )?(?:persona|humano|alguien|el dueño|el encargado)|"
+    r"persona del equipo|dueño|encargado|queja|reclamo|no funciona|error|"
+    r"problema con (?:mi )?(?:cita|reserva|pago)|cobro incorrecto)\b",
+    re.IGNORECASE,
+)
 
-def notify_human(wa_id: str, motivo: str) -> None:
+
+def notify_human(wa_id: str, motivo: str) -> bool:
     """Avisa al dueño por WhatsApp y, opcionalmente, a un webhook externo."""
+    if not _REAL_ESCALATION_RE.search(motivo):
+        logger.info("escalado omitido: no es una solicitud de soporte real")
+        return False
     settings = get_settings()
     if settings.owner_wa_id:
         from app.sender import send_text
@@ -35,6 +46,7 @@ def notify_human(wa_id: str, motivo: str) -> None:
         logger.exception(
             "no se pudo notificar el escalado a humano wa_id_hash=%s", hash_wa_id(wa_id)
         )
+    return True
 
 
 def _build_payload(wa_id: str, motivo: str, webhook_url: str) -> dict[str, str]:

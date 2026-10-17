@@ -375,5 +375,7 @@ def reagendar_cita(
 
 def escalar_humano(ctx: RunContext[BotDeps], motivo: str) -> str:
     """Deriva la conversación a una persona del equipo."""
-    notify_human(ctx.deps.wa_id, motivo)
+    notified = notify_human(ctx.deps.wa_id, motivo)
+    if not notified:
+        return "Eso no lo puedo responder, yo solo te ayudo con la barbería. ¿Quieres agendar una cita o saber precios?"
     return f"Listo, aviso a una persona del equipo (motivo: {motivo}). En breve te escriben."
