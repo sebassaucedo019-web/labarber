@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic_ai import RunContext
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.agent.deps import BotDeps
 from app.agenda import agenda_link_message
@@ -251,12 +252,16 @@ def agendar(ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: st
         return "Ese horario ya está ocupado. Consulta disponibilidad para elegir otro."
     ctx.deps.db.add(Appointment(
         wa_id=ctx.deps.wa_id,
-        customer_name=nombre.strip(),
+        customer_name=nombre.strip()[:120],
         service=service,
         barber=barber,
         starts_at=starts_at,
     ))
-    ctx.deps.db.commit()
+    try:
+        ctx.deps.db.commit()
+    except IntegrityError:
+        ctx.deps.db.rollback()
+        return "Ese horario acaba de ocuparse. Consulta disponibilidad para elegir otro."
     appointment = ctx.deps.db.scalar(select(Appointment).where(
         Appointment.wa_id == ctx.deps.wa_id,
         Appointment.starts_at == starts_at,
@@ -331,7 +336,11 @@ def reagendar_cita(
     old_barber = appointment.barber
     appointment.starts_at = new
     appointment.barber = target_barber
-    ctx.deps.db.commit()
+    try:
+        ctx.deps.db.commit()
+    except IntegrityError:
+        ctx.deps.db.rollback()
+        return "El nuevo horario acaba de ocuparse. Consulta disponibilidad para elegir otro."
     if old_starts_at == new and old_barber != target_barber:
         staff_message = (
             "Cambio de barbero en BARBER CG 💈\n"

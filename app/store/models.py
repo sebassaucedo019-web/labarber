@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, Index, String, Text, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -47,3 +47,15 @@ class Appointment(Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     status: Mapped[str] = mapped_column(String(16), default="confirmed", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        # Prevent two workers from confirming the same barber and time under load.
+        Index(
+            "uq_confirmed_barber_slot",
+            "starts_at",
+            "barber",
+            unique=True,
+            postgresql_where=text("status = 'confirmed'"),
+            sqlite_where=text("status = 'confirmed'"),
+        ),
+    )

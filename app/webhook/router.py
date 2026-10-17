@@ -36,7 +36,13 @@ async def receive(request: Request) -> Response:
         logger.warning("firma inválida en webhook entrante")
         return Response(status_code=401)
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except ValueError:
+        logger.warning("payload JSON inválido en webhook")
+        return Response(status_code=400)
+    if not isinstance(payload, dict):
+        return Response(status_code=400)
     queue = get_queue()
     for message in extract_text_messages(payload):
         queue.enqueue(buffer_inbound, message["wa_id"], message["message_id"], message["text"])
