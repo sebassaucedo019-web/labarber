@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 _REAL_ESCALATION_RE = re.compile(
     r"\b(?:hablar con (?:una )?(?:persona|humano|alguien|el dueño|el encargado)|"
-    r"persona del equipo|dueño|encargado|queja|reclamo|no funciona|error|"
-    r"problema con (?:mi )?(?:cita|reserva|pago)|cobro incorrecto)\b",
+    r"persona del equipo|dueño|encargado|queja|reclamo|"
+    r"problema con (?:mi )?(?:cita|reserva|pago)|cobro incorrecto|"
+    r"(?:no funciona|error) (?:con|en) (?:la )?(?:cita|reserva|barberia|bot|pago))\b",
     re.IGNORECASE,
 )
 
