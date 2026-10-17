@@ -1,4 +1,4 @@
-from app.scope import is_business_message, is_greeting
+from app.scope import is_business_message, is_contextual_follow_up, is_greeting
 from app.agenda import is_agenda_link_request
 
 
@@ -50,6 +50,10 @@ def test_rejects_unrelated_questions_beyond_math() -> None:
     assert not is_business_message("¿Qué clima habrá mañana?")
     assert not is_business_message("¿Quién ganó el partido?")
     assert not is_business_message("¿Me traduces esto al inglés?")
+    assert not is_business_message("¿Qué significa six seven?")
+    assert not is_contextual_follow_up("¿Qué significa six seven?")
+    assert is_contextual_follow_up("5 pm")
+    assert is_contextual_follow_up("A nombre de Sofía")
 
 
 def test_detects_staff_agenda_link_requests() -> None:

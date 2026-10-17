@@ -1,5 +1,10 @@
 import re
 
+OUT_OF_SCOPE_REPLY = (
+    "Eso no lo puedo responder, yo solo te ayudo con la barbería. "
+    "¿Quieres agendar una cita o saber precios?"
+)
+
 
 _BANNED_WORDS = (
     (re.compile(r"\b(pendej(?:o|a|os|as))\b", re.IGNORECASE), "amigo"),

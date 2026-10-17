@@ -17,7 +17,8 @@ from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
 from app.sender import send_text
-from app.safety import contains_banned_language, sanitize_reply
+from app.safety import OUT_OF_SCOPE_REPLY, contains_banned_language, sanitize_reply
+from app.scope import is_business_message, is_contextual_follow_up
 from app.agent.tools import MENU_SENTINEL
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
@@ -83,6 +84,12 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         # thread to grow until every response becomes slow or hits model limits.
         history = history[-MAX_HISTORY_MESSAGES:]
         deps = BotDeps(wa_id=wa_id, db=session)
+        history_text = raw_history.decode("utf-8", errors="ignore") if raw_history else ""
+        has_business_context = bool(history_text) and is_business_message(history_text)
+        if not is_business_message(prompt) and not (
+            has_business_context and is_contextual_follow_up(prompt)
+        ):
+            return OUT_OF_SCOPE_REPLY
         current_local = datetime.now(BUSINESS_TZ)
         current_timestamp = current_local.strftime("%Y-%m-%d %H:%M")
         safety_note = (

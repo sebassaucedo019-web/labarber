@@ -94,6 +94,16 @@ def is_business_message(text: str, *, has_business_context: bool = False) -> boo
     )
 
 
+def is_contextual_follow_up(text: str) -> bool:
+    """Allow only appointment details that make sense after a barber question."""
+    normalized = _normalize(text).strip()
+    return bool(
+        _FOLLOW_UP_RE.fullmatch(normalized)
+        or _TIME_REPLY_RE.fullmatch(normalized)
+        or _DETAIL_REPLY_RE.fullmatch(normalized)
+    )
+
+
 def _has_business_term(normalized: str, terms: tuple[str, ...] = _BUSINESS_TERMS) -> bool:
     """Match phrases or complete words so generic text does not pass by accident."""
     return any(
