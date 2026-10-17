@@ -23,6 +23,7 @@ from app.store.redis_store import pop_pending_messages, push_pending_message
 logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT_SECONDS = 25
+MAX_BATCH_CHARS = 8000
 FALLBACK_REPLY = "Dame un segundo que lo estoy pensando, ya te respondo 🙂"
 BUSINESS_TZ = ZoneInfo("America/Chihuahua")
 
@@ -47,7 +48,7 @@ def process_wa_id(wa_id: str) -> None:
         if not messages:
             return
 
-        prompt = "\n".join(messages)
+        prompt = "\n".join(messages)[-MAX_BATCH_CHARS:]
         if is_agenda_link_request(prompt):
             send_text(wa_id, agenda_link_message(wa_id))
             return

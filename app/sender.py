@@ -32,7 +32,7 @@ def get_client() -> WhatsApp:
     return _client
 
 
-def send_text(wa_id: str, text: str) -> None:
+def send_text(wa_id: str, text: str) -> bool:
     try:
         recipient = _meta_recipient_id(wa_id)
         logger.info("enviando respuesta a Meta recipient=%s", recipient)
@@ -42,12 +42,14 @@ def send_text(wa_id: str, text: str) -> None:
             hash_wa_id(wa_id),
             getattr(sent, "id", "desconocido"),
         )
+        return True
     except Exception:
         logger.exception(
             "no se pudo enviar el mensaje recipient=%s wa_id_hash=%s",
             _meta_recipient_id(wa_id),
             hash_wa_id(wa_id),
         )
+        return False
 
 
 def send_welcome_buttons(wa_id: str) -> None:
