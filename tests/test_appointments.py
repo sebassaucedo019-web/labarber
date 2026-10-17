@@ -249,3 +249,18 @@ def test_availability_does_not_offer_past_slots_today(monkeypatch: pytest.Monkey
     assert "09:00" not in result
     assert "15:00" not in result
     assert "15:30" in result
+
+
+def test_booking_rejects_closing_time_and_invalid_minutes() -> None:
+    session, deps = make_deps()
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    at_closing = agendar(
+        as_ctx(deps), f"{tomorrow} 20:00", "corte normal", "Ana", "Obed"
+    )
+    invalid_minutes = agendar(
+        as_ctx(deps), f"{tomorrow} 10:15", "corte normal", "Ana", "Obed"
+    )
+
+    assert "09:00 a 20:00" in at_closing
+    assert "09:00 a 20:00" in invalid_minutes

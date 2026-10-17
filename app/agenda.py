@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import html
@@ -106,7 +107,7 @@ def _verify_token(token: str) -> str | None:
             return None
         scope = data["scope"]
         return scope if scope == "all" or scope in {"Obed", "Jesús", "Yadier"} else None
-    except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+    except (binascii.Error, KeyError, TypeError, ValueError, UnicodeDecodeError):
         return None
 
 
