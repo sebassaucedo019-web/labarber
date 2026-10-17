@@ -359,7 +359,7 @@ def reagendar_cita(
         )
     else:
         staff_message = (
-            "Cita actualizada en BARBER CG 💈\n"
+            "Cambio de barbero y horario en BARBER CG 💈\n"
             f"Cliente: {appointment.customer_name}\n"
             f"Antes: {old_starts_at:%d/%m/%Y %H:%M} con {old_barber}\n"
             f"Ahora: {new:%d/%m/%Y %H:%M} con {target_barber}"

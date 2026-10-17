@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.agent.deps import BotDeps
@@ -234,7 +234,7 @@ def test_reschedule_can_change_barber_and_notifies_new_staff(monkeypatch: pytest
     recipients = {recipient for recipient, _ in sent}
     assert {"5216110000000", "5216111111111", "5216112222222"} == recipients
     assert any("Cambio de barbero" in message for _, message in sent)
-    assert all("Antes:" not in message for _, message in sent if "Cambio de barbero" in message)
+    assert all("Antes:" not in message for _, message in sent if message.startswith("Cambio de barbero en"))
     get_settings.cache_clear()
 
 

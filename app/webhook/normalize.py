@@ -44,10 +44,18 @@ def extract_text_messages(payload: dict[str, Any]) -> Iterator[InboundText]:
                 if not isinstance(text, str):
                     continue
                 text = text.strip()[:MAX_INBOUND_TEXT_LENGTH]
-                if not message.get("from") or not message.get("id") or not text:
+                sender = message.get("from")
+                message_id = message.get("id")
+                if (
+                    not isinstance(sender, str)
+                    or not isinstance(message_id, str)
+                    or not sender.strip()
+                    or not message_id.strip()
+                    or not text
+                ):
                     continue
                 yield InboundText(
-                    wa_id=message["from"],
-                    message_id=message["id"],
+                    wa_id=sender.strip(),
+                    message_id=message_id.strip(),
                     text=text,
                 )

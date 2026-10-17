@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT_SECONDS = 25
 MAX_BATCH_CHARS = 8000
+MAX_HISTORY_MESSAGES = 24
 FALLBACK_REPLY = "Dame un segundo que lo estoy pensando, ya te respondo 🙂"
 BUSINESS_TZ = ZoneInfo("America/Chihuahua")
 
@@ -75,6 +77,9 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
     try:
         raw_history = load_history(session, wa_id)
         history = ModelMessagesTypeAdapter.validate_json(raw_history) if raw_history else []
+        # Keep enough context for a natural conversation without allowing an old
+        # thread to grow until every response becomes slow or hits model limits.
+        history = history[-MAX_HISTORY_MESSAGES:]
         deps = BotDeps(wa_id=wa_id, db=session)
         current_local = datetime.now(BUSINESS_TZ)
         current_timestamp = current_local.strftime("%Y-%m-%d %H:%M")
@@ -96,7 +101,12 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
                 timeout=LLM_TIMEOUT_SECONDS,
             )
         )
-        save_history(session, wa_id, result.all_messages_json())
+        messages_json = json.loads(result.all_messages_json())
+        save_history(
+            session,
+            wa_id,
+            json.dumps(messages_json[-MAX_HISTORY_MESSAGES:], ensure_ascii=False).encode(),
+        )
         if deps.menu_sent:
             return MENU_SENTINEL
         return sanitize_reply(str(result.output))

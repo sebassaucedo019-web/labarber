@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from rq import Queue
 from rq.job import Job
 
@@ -20,9 +22,13 @@ def schedule_processing(wa_id: str) -> None:
             previous_job_id = previous_job_id.decode()
         _cancel(queue, str(previous_job_id))
 
-    # SimpleWorker en Windows puede dejar jobs programados en espera.
-    # En el demo encolamos inmediatamente para no perder respuestas.
-    job = queue.enqueue("app.queue.tasks.process_wa_id", wa_id)
+    # RQ Scheduler waits for the quiet period before running the job. The worker
+    # starts with its scheduler enabled, so consecutive messages become one turn.
+    job = queue.enqueue_in(
+        timedelta(seconds=get_settings().debounce_seconds),
+        "app.queue.tasks.process_wa_id",
+        wa_id,
+    )
     r.set(f"debounce:{wa_id}", job.id, ex=30)
 
 

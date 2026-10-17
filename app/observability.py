@@ -13,7 +13,7 @@ def hash_wa_id(wa_id: str) -> str:
 def check_rate_limit(wa_id: str) -> bool:
     settings = get_settings()
     r = get_redis()
-    key = f"ratelimit:{wa_id}:{int(time.time() // 60)}"
+    key = f"ratelimit:{hash_wa_id(wa_id)}:{int(time.time() // 60)}"
     count = r.incr(key)
     if count == 1:
         r.expire(key, 60)
