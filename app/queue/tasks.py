@@ -15,7 +15,7 @@ from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
 from app.queue.dedupe import already_processed
 from app.sender import send_text
-from app.safety import sanitize_reply
+from app.safety import contains_banned_language, sanitize_reply
 from app.agent.tools import MENU_SENTINEL
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import pop_pending_messages, push_pending_message
@@ -78,11 +78,17 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         deps = BotDeps(wa_id=wa_id, db=session)
         current_local = datetime.now(BUSINESS_TZ)
         current_timestamp = current_local.strftime("%Y-%m-%d %H:%M")
+        safety_note = (
+            "[El mensaje contiene lenguaje ofensivo: no lo repitas ni lo conviertas en "
+            "una conversación personal; redirige a la barbería si no hay una solicitud válida.]\n"
+            if contains_banned_language(prompt)
+            else ""
+        )
         dated_prompt = (
             f"[Fecha y hora actual en Chihuahua: {current_timestamp}. "
             "Interpreta hoy, mañana y expresiones como 'dentro de dos horas' desde este momento. "
             "Para una cita redondea al siguiente bloque de 30 minutos y usa formato AAAA-MM-DD HH:MM.]\n"
-            f"{prompt}"
+            f"{safety_note}{prompt}"
         )
         result = asyncio.run(
             asyncio.wait_for(

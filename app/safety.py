@@ -13,6 +13,11 @@ _BANNED_WORDS = (
 )
 
 
+def contains_banned_language(text: str) -> bool:
+    """Detect offensive language so the agent can receive an extra guardrail."""
+    return any(pattern.search(text) for pattern, _ in _BANNED_WORDS)
+
+
 def sanitize_reply(text: str) -> str:
     """Remove common insults while preserving normal Mexican tone.
 

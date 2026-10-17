@@ -1,4 +1,4 @@
-from app.safety import sanitize_reply
+from app.safety import contains_banned_language, sanitize_reply
 
 
 def test_sanitize_reply_keeps_mexican_tone() -> None:
@@ -18,3 +18,8 @@ def test_sanitize_reply_removes_more_insults_and_never_returns_empty() -> None:
     assert "idiota" not in result.lower()
     assert "no mames" not in result.lower()
     assert result
+
+
+def test_detects_banned_language() -> None:
+    assert contains_banned_language("No vale verga")
+    assert not contains_banned_language("Quiero agendar una cita")
