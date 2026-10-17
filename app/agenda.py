@@ -122,7 +122,8 @@ def _format_row(appointment: Appointment, *, is_next: bool = False) -> str:
     labels = {"confirmed": "Confirmada", "completed": "Atendida", "cancelled": "Cancelada"}
     label = labels.get(status, status.capitalize())
     state_class = "next" if is_next else status
-    barber = f" · {html.escape(appointment.barber)}" if appointment.barber else ""
+    barber_name = html.escape(appointment.barber) if appointment.barber else "Sin asignar"
+    barber_class = (appointment.barber or "sin-asignar").lower().replace("é", "e").replace(" ", "-")
     return f"""
     <article class="appointment {state_class}" data-status="{html.escape(status)}">
       <div class="time-rail"><strong>{html.escape(_format_time(appointment.starts_at))}</strong></div>
@@ -131,7 +132,8 @@ def _format_row(appointment: Appointment, *, is_next: bool = False) -> str:
           <h3>{html.escape(appointment.customer_name)}</h3>
           <span class="badge">{html.escape(label)}</span>
         </div>
-        <p>{html.escape(appointment.service)}{barber}</p>
+        <p class="appointment-meta"><span class="service">{html.escape(appointment.service)}</span>
+        <span class="barber barber-{html.escape(barber_class)}">{barber_name}</span></p>
       </div>
     </article>"""
 
@@ -181,7 +183,7 @@ def agenda_page(token: str = Query(default="")) -> str:
     date_buttons = "".join(
         f"<button class='date-card{' selected' if day == days[0] else ''}' data-day='{day.isoformat()}' "
         f"aria-label='{html.escape(_day_heading(day, now.date()))}'><span>{spanish_days[day.weekday()]}</span>"
-        f"<strong>{day.day}</strong><small>{len(grouped.get(day, [])) or '—'}</small></button>"
+        f"<strong>{day.day}</strong><small>{len(grouped.get(day, [])) or ''}</small></button>"
         for day in days
     )
     sections = []
@@ -195,23 +197,22 @@ def agenda_page(token: str = Query(default="")) -> str:
             f"<div class='section-heading'><h2>{html.escape(_day_heading(day, now.date()))}</h2>"
             f"<span>{len(day_rows)} cita{'s' if len(day_rows) != 1 else ''}</span></div>{rows_markup}</section>"
         )
-    summary = f"{len(rows)} cita" + ("s" if len(rows) != 1 else "") + " próximas"
+    summary = f"{len(rows)} cita próxima" if len(rows) == 1 else f"{len(rows)} citas próximas"
     page = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#144534"><title>__TITLE__ | BARBER CG</title>
+<meta name="theme-color" content="#14412F"><title>__TITLE__ | BARBER CG</title>
 <style>
-:root{color-scheme:light;font-family:Manrope,system-ui,-apple-system,Segoe UI,sans-serif;background:#edf2ee;color:#17231e}
-*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:linear-gradient(180deg,#dfece4 0,#edf2ee 230px,#edf2ee 100%)}main{max-width:640px;margin:0 auto;padding:0 16px 40px}
-.topbar{position:sticky;top:0;z-index:2;margin:0 -16px;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;background:rgba(255,255,255,.9);backdrop-filter:blur(16px);border-bottom:1px solid #d7e3da;display:flex;align-items:center;justify-content:space-between;gap:12px}.topbar>div{min-width:0}
-.eyebrow{margin:0;color:#46705b;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.topbar h1{margin:3px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 19px/24px 'Space Grotesk',sans-serif;color:#17231e}.refresh{min-height:42px;padding:0 13px;border:1px solid #bad0c1;border-radius:10px;background:#fff;color:#144534;font-weight:800;box-shadow:0 2px 5px #173f2b12}.refresh:active{transform:scale(.97)}
-.intro{padding:28px 0 16px}.intro-row{display:flex;align-items:end;justify-content:space-between;gap:12px}.intro h2{margin:0;font:700 27px/32px 'Space Grotesk',sans-serif;letter-spacing:.01em}.intro p{margin:6px 0 0;color:#5f7167;font-size:14px}.count{color:#8a6500;font-size:12px;font-weight:900;white-space:nowrap;background:#fff8d9;border:1px solid #f0df9a;border-radius:999px;padding:7px 10px}
-.dates{display:flex;gap:9px;overflow-x:auto;padding:2px 0 16px;scrollbar-width:none}.dates::-webkit-scrollbar{display:none}.date-card{flex:0 0 61px;min-height:82px;padding:10px 4px;border:1px solid #d6e2d9;border-radius:12px;background:rgba(255,255,255,.86);color:#34473c;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:0 3px 10px #2249360b}.date-card span{font-size:10px;font-weight:900;text-transform:uppercase;color:#718278}.date-card strong{font:700 22px/25px 'Space Grotesk',sans-serif}.date-card small{font-size:10px;color:#718278}.date-card.selected{background:#144534;border-color:#144534;color:#fff;box-shadow:0 7px 16px #14453435;transform:translateY(-2px)}.date-card.selected span,.date-card.selected small{color:#c9eed8}
-.section-heading{display:flex;align-items:center;justify-content:space-between;margin:8px 0 10px}.section-heading h2{margin:0;font:700 18px/24px 'Space Grotesk',sans-serif}.section-heading span{font-size:12px;color:#5f7167;font-weight:800}.day-section{display:none}.day-section.active{display:block}
-.appointment{position:relative;display:flex;gap:14px;margin:11px 0;padding:15px 14px 15px 16px;border:1px solid #d9e5dc;border-left:4px solid #74a78a;border-radius:13px;background:rgba(255,255,255,.94);box-shadow:0 4px 12px #22493610}.appointment.next{border:2px solid #144534;padding-left:15px;box-shadow:0 9px 22px #14453420}.appointment.completed{border-left-color:#82918a;opacity:.68}.appointment.cancelled{border-left-color:#d45b5b;background:#fffafa}.time-rail{flex:0 0 72px;padding-top:2px}.time-rail strong{font:700 15px/20px 'Space Grotesk',sans-serif;color:#144534}.appointment.completed .time-rail strong{color:#64756d}.appointment-body{min-width:0;flex:1}.appointment-head{display:flex;align-items:start;justify-content:space-between;gap:8px}.appointment h3{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;line-height:22px;color:#17231e}.appointment p{margin:4px 0 0;color:#52645a;font-size:13px;line-height:19px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.badge{flex:0 0 auto;border-radius:999px;padding:5px 8px;background:#e3f2e9;color:#144534;font-size:10px;font-weight:900}.next .badge{background:#144534;color:#fff}.cancelled .badge{background:#fef0f0;color:#bd3f3f}.completed .badge{background:#edf1ef;color:#64756d}.empty{padding:28px 16px;border:1px dashed #afc5b5;border-radius:13px;background:rgba(255,255,255,.65);color:#64756d;text-align:center;font-size:14px}.footer{text-align:center;color:#718278;font-size:12px;padding:28px 0}.footer strong{color:#144534}
-@media (min-width:640px){main{padding-left:24px;padding-right:24px}.topbar{margin-left:-24px;margin-right:-24px;padding-left:24px;padding-right:24px}}
+:root{color-scheme:light;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:#F6F3EC;color:#19221D}
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:#F6F3EC}main{max-width:720px;margin:0 auto;padding:28px 18px 48px}
+.topbar{display:block;padding:12px 0 0;border-bottom:0}.topbar>div{min-width:0}.eyebrow{display:none}.topbar h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,8vw,48px);font-weight:600;line-height:1.05;letter-spacing:-.02em;color:#19221D}.refresh{float:right;margin-top:-38px;min-height:42px;padding:0 14px;border:1px solid #d5cec0;border-radius:10px;background:transparent;color:#14412F;font-size:13px;font-weight:700;transition:background 150ms ease,transform 150ms ease}.refresh:hover{background:#fff}.refresh:active{transform:scale(.97)}
+.intro{padding:9px 0 26px}.intro-row{display:flex;align-items:end;justify-content:space-between;gap:16px}.intro h2{display:none}.intro p{margin:0;color:#756f66;font-size:14px;line-height:20px}.count{color:#14412F;font-size:13px;font-weight:700;white-space:nowrap}
+.dates{display:flex;gap:8px;overflow-x:auto;padding:0 0 22px;scrollbar-width:none}.dates::-webkit-scrollbar{display:none}.date-card{position:relative;flex:1 0 56px;min-height:72px;padding:9px 5px;border:1px solid #ded8cc;border-radius:999px;background:transparent;color:#756f66;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;transition:background 150ms ease,color 150ms ease,border-color 150ms ease,transform 150ms ease}.date-card span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.date-card strong{font-family:Georgia,"Times New Roman",serif;font-size:22px;font-weight:600;line-height:25px}.date-card small{width:5px;height:5px;border-radius:50%;background:#B08D57;font-size:0;opacity:0}.date-card:not(:has(small:empty)) small{opacity:1}.date-card.selected{background:#14412F;border-color:#14412F;color:#fff;transform:translateY(-2px)}.date-card.selected small{background:#E0C38E}.date-card:hover{border-color:#B08D57}
+.section-heading{display:flex;align-items:center;justify-content:space-between;margin:2px 0 12px}.section-heading h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:24px;font-weight:600;line-height:30px;color:#19221D}.section-heading span{font-size:12px;color:#756f66;font-weight:700}.day-section{display:none}.day-section.active{display:block;animation:show-day 150ms ease both}@keyframes show-day{from{opacity:.35;transform:translateY(3px)}to{opacity:1;transform:none}}
+.appointment{display:flex;gap:18px;margin:11px 0;padding:18px 16px;border:1px solid #ded8cc;border-radius:14px;background:#fff;box-shadow:0 3px 14px rgba(40,32,20,.06);transition:transform 150ms ease,box-shadow 150ms ease}.appointment:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(40,32,20,.09)}.appointment.next{border-color:#B08D57;box-shadow:0 5px 18px rgba(176,141,87,.16)}.appointment.cancelled{border-color:#d8d5cf;background:#faf9f6;opacity:.78}.appointment.completed{border-color:#e1c995}.time-rail{flex:0 0 74px;padding-top:1px}.time-rail strong{font-family:Georgia,"Times New Roman",serif;font-size:22px;font-weight:600;line-height:28px;color:#14412F}.appointment-body{min-width:0;flex:1}.appointment-head{display:flex;align-items:start;justify-content:space-between;gap:10px}.appointment h3{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:capitalize;font-size:16px;line-height:22px;color:#19221D}.appointment-meta{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:7px 0 0;color:#756f66;font-size:13px;line-height:20px}.service{text-transform:capitalize}.barber{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;line-height:17px}.barber-obed{background:#e6f0e9;color:#24543b}.barber-jesus{background:#f2e9dc;color:#76572e}.barber-yadier{background:#e6edf1;color:#385767}.barber-sin-asignar{background:#eeece7;color:#756f66}.badge{flex:0 0 auto;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;line-height:15px}.appointment[data-status="confirmed"] .badge{background:#e6f0e9;color:#24543b}.appointment[data-status="cancelled"] .badge{background:#eeece7;color:#756f66}.appointment[data-status="completed"] .badge{background:#f2e9dc;color:#76572e}.next .badge{background:#14412F!important;color:#fff!important}.empty{padding:30px 16px;border:1px dashed #c9c1b4;border-radius:14px;background:transparent;color:#756f66;text-align:center;font-size:14px}.footer{text-align:center;color:#8a8379;font-size:12px;padding:30px 0 0}.footer strong{color:#14412F}
+@media (min-width:640px){main{padding:52px 30px 64px}.refresh{margin-top:-42px}.dates{gap:10px}.date-card{flex-basis:72px}.appointment{padding:20px}}
 </style></head><body><main>
-<header class="topbar"><div><p class="eyebrow">BARBER CG</p><h1>__TITLE__</h1></div><button class="refresh" id="refresh" type="button" aria-label="Actualizar agenda">↻ Actualizar</button></header>
-<section class="intro"><div class="intro-row"><div><h2>Tu agenda</h2><p>Próximos 7 días · Chihuahua</p></div><span class="count">__SUMMARY__</span></div></section>
+<header class="topbar"><div><h1>Agenda</h1></div><button class="refresh" id="refresh" type="button" aria-label="Actualizar agenda">Actualizar</button></header>
+<section class="intro"><div class="intro-row"><p>Próximos 7 días · Chihuahua</p><span class="count">__SUMMARY__</span></div></section>
 <nav class="dates" aria-label="Seleccionar día">__DATES__</nav><div id="sections">__SECTIONS__</div>
 <footer class="footer">Agenda privada de <strong>BARBER CG</strong><br>Actualizada al abrir esta página</footer>
 </main><script>
