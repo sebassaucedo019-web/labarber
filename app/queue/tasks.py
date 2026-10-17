@@ -42,12 +42,11 @@ def buffer_inbound(wa_id: str, message_id: str, text: str) -> None:
 def process_wa_id(wa_id: str) -> None:
     """Job que dispara el debounce: junta los mensajes pendientes y corre el agente."""
     try:
-        if not check_rate_limit(wa_id):
-            logger.warning("rate limit excedido wa_id_hash=%s", hash_wa_id(wa_id))
-            return
-
         messages = pop_pending_messages(wa_id)
         if not messages:
+            return
+        if not check_rate_limit(wa_id):
+            logger.warning("rate limit excedido wa_id_hash=%s", hash_wa_id(wa_id))
             return
 
         prompt = "\n".join(messages)[-MAX_BATCH_CHARS:]
