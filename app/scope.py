@@ -58,6 +58,10 @@ _BUSINESS_INTENT_RE = re.compile(
     r"cita|agenda|precio|servicio|barbero|horario|hora|ubicacion|direccion|"
     r"fade|degradado|bigote|ceja|turno|silla|pago)\b"
 )
+_APPOINTMENT_ACTION_RE = re.compile(
+    r"\b(?:cancel\w*|reagend\w*|reserv\w*|agend\w*)\b",
+    re.IGNORECASE,
+)
 
 
 def _normalize(text: str) -> str:
@@ -84,6 +88,8 @@ def is_business_message(text: str, *, has_business_context: bool = False) -> boo
         return True
     if _OFF_TOPIC_RE.search(normalized) and not _has_business_term(normalized, _DIRECT_BUSINESS_TERMS):
         return False
+    if _APPOINTMENT_ACTION_RE.search(normalized):
+        return True
     # Once the conversation is clearly about the barber shop, allow natural
     # follow-ups such as "y qué más?", "cómo le hago?" or "y luego?". The
     # explicit off-topic guard above still blocks math, school, weather, etc.

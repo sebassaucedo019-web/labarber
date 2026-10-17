@@ -44,6 +44,9 @@ def test_business_context_wins_when_word_is_ambiguous() -> None:
     assert not is_business_message("5 pm")
     assert is_business_message("Cancela las citas")
     assert is_business_message("Cancela mi cita de mañana")
+    assert is_business_message("Cancelala")
+    assert is_business_message("CANCELALA")
+    assert is_business_message("cancela la sita")
 
 
 def test_rejects_unrelated_questions_beyond_math() -> None:
