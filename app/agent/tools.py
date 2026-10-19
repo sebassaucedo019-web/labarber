@@ -277,19 +277,39 @@ def agendar(ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: st
     )
 
 
-def cancelar_cita(ctx: RunContext[BotDeps], fecha_hora: str) -> str:
-    """Cancela una cita propia si faltan al menos 3 horas."""
+def cancelar_cita(
+    ctx: RunContext[BotDeps], fecha_hora: str, cliente: str | None = None
+) -> str:
+    """Cancela una cita propia o una cita del equipo con permiso de staff."""
     starts_at = _parse_datetime(fecha_hora)
     if starts_at is None:
         return "Necesito fecha y hora como AAAA-MM-DD HH:MM."
-    appointment = ctx.deps.db.scalar(select(Appointment).where(
-        Appointment.wa_id == ctx.deps.wa_id,
+    is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
+    conditions = [
         Appointment.starts_at == starts_at,
         Appointment.status == "confirmed",
-    ))
+    ]
+    if is_admin:
+        pass
+    elif barber_filter:
+        conditions.append(Appointment.barber == barber_filter)
+    else:
+        conditions.append(Appointment.wa_id == ctx.deps.wa_id)
+    appointments = ctx.deps.db.scalars(select(Appointment).where(*conditions)).all()
+    if cliente and (is_admin or barber_filter):
+        wanted = " ".join(cliente.split()).casefold()
+        appointments = [
+            row for row in appointments
+            if " ".join(row.customer_name.split()).casefold() == wanted
+        ]
+    appointment = appointments[0] if len(appointments) == 1 else None
+    if len(appointments) > 1:
+        return "Hay varias citas en ese horario. Dime el nombre exacto del cliente."
     if appointment is None:
+        if barber_filter:
+            return "No encontré una cita de ese barbero en ese horario."
         return "No encontré una cita confirmada en ese horario."
-    if starts_at - _now() < timedelta(hours=3):
+    if not is_admin and barber_filter is None and starts_at - _now() < timedelta(hours=3):
         return "No se puede cancelar con menos de 3 horas de anticipación."
     appointment.status = "cancelled"
     ctx.deps.db.commit()

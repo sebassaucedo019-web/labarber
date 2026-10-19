@@ -45,7 +45,7 @@ def test_agendar_guarda_y_evita_traslape():
 
 
 def test_cancelar_respeta_tres_horas():
-    session, deps = make_deps()
+    session, deps = make_deps("5216999999999")
     when = datetime.now() + timedelta(hours=2)
     when = when.replace(second=0, microsecond=0)
     session.add(Appointment(
@@ -201,6 +201,36 @@ def test_cancel_and_reschedule_notify_staff(monkeypatch: pytest.MonkeyPatch) -> 
     result = cancelar_cita(as_ctx(deps), second.strftime("%Y-%m-%d %H:%M"))
     assert "cancelada" in result
     assert any("cancelada" in message for _, message in sent)
+    get_settings.cache_clear()
+
+
+def test_barber_can_cancel_own_assigned_appointment_without_three_hour_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_staff_ids(monkeypatch)
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.agent.tools.send_text",
+        lambda recipient, message: sent.append((recipient, message)),
+    )
+    session, barber_deps = make_deps("5216111111111")
+    when = datetime.now() + timedelta(hours=1)
+    when = when.replace(second=0, microsecond=0)
+    session.add(Appointment(
+        wa_id="5216999999999",
+        customer_name="Miguel",
+        service="corte normal",
+        barber="Obed",
+        starts_at=when,
+    ))
+    session.commit()
+
+    result = cancelar_cita(
+        as_ctx(barber_deps), when.strftime("%Y-%m-%d %H:%M"), "miguel"
+    )
+
+    assert "cancelada" in result
+    assert any("Cita cancelada" in message for _, message in sent)
     get_settings.cache_clear()
 
 
