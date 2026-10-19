@@ -69,9 +69,9 @@ def send_welcome_buttons(wa_id: str) -> None:
             },
             "action": {
                 "buttons": [
-                    {"type": "reply", "reply": {"id": "services", "title": "Ver servicios"}},
-                    {"type": "reply", "reply": {"id": "book", "title": "Agendar cita"}},
-                    {"type": "reply", "reply": {"id": "my_appointment", "title": "Consultar mi cita"}},
+                    {"type": "reply", "reply": {"id": "services", "title": "Servicios"}},
+                    {"type": "reply", "reply": {"id": "book", "title": "Agendar"}},
+                    {"type": "reply", "reply": {"id": "my_appointment", "title": "Mi cita"}},
                 ]
             },
         },

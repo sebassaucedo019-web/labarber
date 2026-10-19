@@ -32,5 +32,7 @@ def sanitize_reply(text: str) -> str:
     cleaned = text
     for pattern, replacement in _BANNED_WORDS:
         cleaned = pattern.sub(replacement, cleaned)
+    # WhatsApp can display Markdown markers literally in plain-text replies.
+    cleaned = cleaned.replace("*", "")
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
     return cleaned or "Con gusto te ayudo con servicios y citas de BARBER CG 💈"

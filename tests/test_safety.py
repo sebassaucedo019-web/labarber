@@ -20,6 +20,10 @@ def test_sanitize_reply_removes_more_insults_and_never_returns_empty() -> None:
     assert result
 
 
+def test_sanitize_reply_removes_visible_markdown_asterisks() -> None:
+    assert sanitize_reply("¿Es a las *9:00 p. m.*?") == "¿Es a las 9:00 p. m.?"
+
+
 def test_detects_banned_language() -> None:
     assert contains_banned_language("No vale verga")
     assert not contains_banned_language("Quiero agendar una cita")
