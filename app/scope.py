@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 
 _BUSINESS_TERMS = (
@@ -32,6 +33,17 @@ _GREETING_RE = re.compile(
     r"^(?:h+o+l+a+|o+l+a+|holi+|hey+|hello+|hi+|buenas(?:\s+(?:tardes|dias|noches))?|"
     r"buen dia|buenos dias|saludos|que onda|que tal|que rollo|que tranza|"
     r"como estas|como andas)[!.? ]*$"
+)
+_FUZZY_GREETING_PHRASES = (
+    "buenas mananas",
+    "buenos dias",
+    "buenas tardes",
+    "buenas noches",
+    "que onda",
+    "que tal",
+    "que rollo",
+    "que tranza",
+    "saludos",
 )
 _FOLLOW_UP_RE = re.compile(
     r"^(si|sí|ok|okay|va|dale|confirmo|confirmar|agendala|agéndala|hazlo|listo)[!.? ]*$",
@@ -70,7 +82,15 @@ def _normalize(text: str) -> str:
 
 
 def is_greeting(text: str) -> bool:
-    return bool(_GREETING_RE.fullmatch(_normalize(text).strip()))
+    normalized = _normalize(text).strip()
+    if _GREETING_RE.fullmatch(normalized):
+        return True
+    if len(normalized) < 5 or len(normalized) > 32:
+        return False
+    return any(
+        SequenceMatcher(None, normalized, phrase).ratio() >= 0.86
+        for phrase in _FUZZY_GREETING_PHRASES
+    )
 
 
 def is_business_message(text: str, *, has_business_context: bool = False) -> bool:
@@ -78,7 +98,7 @@ def is_business_message(text: str, *, has_business_context: bool = False) -> boo
     normalized = _normalize(text).strip()
     if not normalized:
         return False
-    if _GREETING_RE.fullmatch(normalized):
+    if is_greeting(normalized):
         return True
     if _FOLLOW_UP_RE.fullmatch(normalized):
         return True

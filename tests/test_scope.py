@@ -27,6 +27,8 @@ def test_allows_barber_messages_and_greetings() -> None:
     assert is_greeting("Qué onda")
     assert is_greeting("Buenas noches")
     assert is_greeting("Saludos")
+    assert is_greeting("Buenas malanas")
+    assert is_business_message("Buenas malanas")
     assert not is_greeting("Hola, quiero agendar una cita")
 
 
