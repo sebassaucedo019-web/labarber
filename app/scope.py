@@ -50,8 +50,9 @@ _FOLLOW_UP_RE = re.compile(
     re.IGNORECASE,
 )
 _TIME_REPLY_RE = re.compile(
-    r"^(?:a\s+las\s+)?\d{1,2}(?::\d{2})?\s*"
-    r"(?:a\.?\s*m\.?|p\.?\s*m\.?|[ap]\.?|de\s+la\s+(?:manana|tarde|noche))?[!.? ]*$",
+    r"^(?:(?:a\s+las\s+)?\d{1,2}(?::\d{2})?\s*"
+    r"(?:a\.?\s*m\.?|p\.?\s*m\.?|[ap]\.?|de\s+la\s+(?:manana|tarde|noche))?"
+    r"|a\.?\s*m\.?|p\.?\s*m\.?)\s*[!.? ]*$",
     re.IGNORECASE,
 )
 _DETAIL_REPLY_RE = re.compile(

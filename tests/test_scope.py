@@ -58,6 +58,8 @@ def test_rejects_unrelated_questions_beyond_math() -> None:
     assert not is_business_message("¿Qué significa six seven?")
     assert not is_contextual_follow_up("¿Qué significa six seven?")
     assert is_contextual_follow_up("5 pm")
+    assert is_contextual_follow_up("pm")
+    assert is_contextual_follow_up("p.m.")
     assert is_contextual_follow_up("A nombre de Sofía")
 
 
