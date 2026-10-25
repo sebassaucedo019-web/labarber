@@ -1,0 +1,165 @@
+@font-face {
+  font-family: Inter;
+  src: url("./fonts/inter.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: Fraunces;
+  src: url("./fonts/fraunces.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f6f3ec;
+  color: #202c25;
+  --green: #14412f;
+  --gold: #b08d57;
+  --muted: #696d65;
+  --line: #dedfd7;
+}
+* { box-sizing: border-box; letter-spacing: 0; }
+body { margin: 0; min-width: 280px; min-height: 100dvh; }
+button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:focus-visible, [role="tabpanel"]:focus-visible { outline: 3px solid #996f32; outline-offset: 4px; }
+button:disabled { cursor: wait; }
+.icon { display: block; width: 20px; height: 20px; flex: 0 0 auto; }
+.brand-bar { background: #fff; border-bottom: 1px solid var(--line); }
+.brand-inner {
+  max-width: 720px; margin: auto; min-height: 78px; padding: 16px 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand-mark {
+  display: grid; place-items: center; width: 38px; height: 38px;
+  background: var(--green); color: #fff; border-radius: 10px; flex: 0 0 auto;
+}
+.brand-mark .icon { width: 22px; height: 22px; }
+.brand strong { display: block; font-size: 14px; font-weight: 700; line-height: 1.5; }
+.brand span:not(.brand-mark) { display: block; font-size: 11px; color: var(--muted); line-height: 1.6; }
+.private-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.private-label .icon { width: 13px; height: 13px; }
+.agenda-shell { max-width: 720px; margin: auto; padding: 36px 24px 32px; }
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.scope-label { margin: 0 0 7px; color: var(--green); font-size: 12px; font-weight: 600; line-height: 1.6; }
+h1 { margin: 0; font-family: Fraunces, Georgia, serif; font-size: 40px; font-weight: 600; line-height: 1.15; }
+.date-range { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 9px 0 0; }
+.refresh-wrap { position: relative; flex: 0 0 auto; }
+.icon-button {
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid #d5d9ce; background: #fff; color: var(--green);
+  transition: background 150ms, border-color 150ms;
+}
+.icon-button:hover { background: #e9eee7; border-color: #9aac9b; }
+.icon-button[aria-busy="true"] .icon { animation: spin 900ms linear infinite; }
+.tooltip {
+  position: absolute; z-index: 2; right: 0; top: calc(100% + 8px); padding: 8px 10px;
+  border-radius: 6px; color: #fff; background: #233c2d; font-size: 11px;
+  white-space: nowrap; visibility: hidden; opacity: 0; transition: opacity 150ms;
+}
+.refresh-wrap:hover .tooltip, .refresh-wrap:focus-within .tooltip { opacity: 1; visibility: visible; }
+.week-strip { padding: 32px 0 25px; border-bottom: 1px solid var(--line); }
+.week-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.week-heading h2 { font-size: 12px; margin: 0; font-weight: 600; color: #4d584e; }
+.week-heading > span { font-size: 12px; color: var(--muted); text-align: right; }
+.dates { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 9px; }
+.date-tab {
+  min-width: 0; height: 88px; padding: 10px 2px; border: 1px solid transparent;
+  border-radius: 18px; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 6px; background: #eaeae3; color: #666d65;
+  transition: color 150ms, background 150ms, border-color 150ms;
+}
+.date-tab .weekday { font-size: 11px; line-height: 14px; font-weight: 500; }
+.date-tab .day-number { font-size: 23px; line-height: 27px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.date-tab .day-dot { width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+.date-tab.has-appointments { background: #fff; border-color: var(--line); color: #37463a; }
+.date-tab.has-appointments .day-dot { background: var(--gold); }
+.date-tab:hover { border-color: #8ba28f; }
+.date-tab[aria-selected="true"] { background: var(--green); border-color: var(--green); color: #fff; }
+.date-tab[aria-selected="true"] .day-dot { background: #dfc28f; }
+.date-tab[aria-selected="true"]:not(.has-appointments) .day-dot { background: transparent; }
+.day-section { padding-top: 25px; animation: show-day 150ms ease both; }
+[hidden] { display: none !important; }
+.section-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 16px; }
+.section-heading h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.5; }
+.section-heading .day-total { flex-shrink: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.appointments { display: grid; gap: 12px; }
+.appointment {
+  position: relative; display: grid; grid-template-columns: 87px minmax(0, 1fr); gap: 20px;
+  padding: 20px; border: 1px solid #dedfd7; border-radius: 14px; background: #fff;
+  box-shadow: 0 2px 6px #26372a04;
+}
+.appointment.next { border-color: #8aa18a; box-shadow: 0 3px 14px #14412f08; }
+.appointment.next::before {
+  content: ""; position: absolute; left: -1px; top: 23px; bottom: 23px; width: 3px;
+  background: var(--green); border-radius: 0 3px 3px 0;
+}
+.time-rail { border-right: 1px solid #e8eae3; display: flex; justify-content: center; flex-direction: column; gap: 3px; }
+.time-number { font-family: Fraunces, Georgia, serif; font-size: 29px; font-weight: 600; line-height: 1.15; color: var(--green); font-variant-numeric: tabular-nums; }
+.time-period { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.appointment-body { min-width: 0; }
+.appointment h3 { margin: 0 0 5px; font-size: 16px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.service { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.appointment-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.barber { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; line-height: 16px; }
+.barber::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.barber-obed { color: #3b614d; background: #e9f0e9; }
+.barber-jesus { color: #74591f; background: #f4efdf; }
+.barber-yadier { color: #465f83; background: #ebeff7; }
+.barber-unassigned { color: #5b6058; background: #eeefea; }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; line-height: 16px; padding: 3px 7px; border-radius: 6px; color: #48644c; background: #f0f5ed; }
+.badge .icon { width: 11px; height: 11px; }
+.appointment.cancelled { background: #fbfbf9; }
+.appointment.cancelled .badge { color: #666960; background: #edeee9; }
+.appointment.completed .badge { color: #715624; background: #f5edda; }
+.next-label { color: var(--green); font-size: 10px; font-weight: 600; display: flex; align-items: center; gap: 4px; margin-left: auto; line-height: 1.5; }
+.next-label .icon { width: 11px; height: 11px; }
+.empty { text-align: center; padding: 44px 16px 54px; }
+.empty-icon { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto 16px; border: 1px solid #d9ded1; border-radius: 14px; color: #6f816d; background: #fdfdfa; }
+.empty-icon .icon { width: 24px; height: 24px; }
+.empty p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.6; }
+.agenda-footer { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); color: #6b7167; font-size: 10px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; line-height: 1.5; }
+.agenda-footer > span:first-child { display: flex; align-items: center; gap: 5px; }
+.agenda-footer .icon { width: 12px; height: 12px; }
+.expired-state { text-align: center; padding-top: 90px; }
+.expired-state h1 { max-width: 440px; margin: 0 auto; font-size: 32px; }
+.expired-state > p:last-child { color: var(--muted); font-size: 14px; line-height: 1.7; max-width: 330px; margin: 18px auto; }
+@keyframes show-day { from { opacity: .4; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) {
+  .brand-inner { padding: 15px 20px; min-height: 72px; }
+  .brand-mark { width: 34px; height: 34px; border-radius: 9px; }
+  .private-label { font-size: 10px; }
+  .agenda-shell { padding: 28px 20px 26px; }
+  h1 { font-size: 36px; }
+  .date-range { font-size: 13px; }
+  .week-strip { padding-top: 27px; padding-bottom: 22px; }
+  .week-heading > span, .week-heading h2 { font-size: 11px; }
+  .dates { gap: 5px; }
+  .date-tab { height: 80px; border-radius: 16px; }
+  .date-tab .day-number { font-size: 20px; line-height: 24px; }
+  .date-tab .weekday { font-size: 10px; }
+  .day-section { padding-top: 22px; }
+  .section-heading h2 { font-size: 15px; }
+  .appointment { grid-template-columns: 78px minmax(0, 1fr); gap: 15px; padding: 18px 16px; }
+  .time-number { font-size: 26px; }
+  .appointment h3 { font-size: 15px; }
+  .service { font-size: 12px; }
+  .appointment-meta { gap: 6px; margin-top: 11px; }
+  .next-label { margin-left: 0; }
+  .expired-state { padding-top: 70px; }
+}
+@media (max-width: 350px) {
+  .brand-inner, .agenda-shell { padding-left: 14px; padding-right: 14px; }
+  .private-label span { display: none; }
+  .dates { gap: 4px; }
+  .appointment { gap: 12px; padding: 16px 12px; grid-template-columns: 72px minmax(0, 1fr); }
+  .time-number { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

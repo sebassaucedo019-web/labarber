@@ -34,6 +34,16 @@ class MessageLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PendingAction(Base):
+    __tablename__ = "pending_actions"
+
+    wa_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    action: Mapped[str] = mapped_column(String(20))
+    payload: Mapped[str] = mapped_column(Text)
+    turn_id: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class Appointment(Base):
     """Citas confirmadas de la barberia."""
 

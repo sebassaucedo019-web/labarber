@@ -1,33 +1,17 @@
-from __future__ import annotations
+from rq import Retry
 
-from rq import Queue
-from rq.job import Job
-
+from app.observability import hash_wa_id
 from app.queue.client import get_queue
-from app.store.redis_store import get_redis
 
 
-def schedule_processing(wa_id: str) -> None:
-    """Reprograma el procesamiento del hilo cada vez que llega un mensaje nuevo,
-    así juntamos varios mensajes cortos seguidos en una sola pasada del agente."""
-    r = get_redis()
+def schedule_processing(wa_id: str, *, pipeline=None) -> None:
+    """Queue a wake-up; the receiver buffers independently of the worker."""
     queue = get_queue()
-
-    previous_job_id = r.get(f"debounce:{wa_id}")
-    if previous_job_id:
-        if isinstance(previous_job_id, bytes):
-            previous_job_id = previous_job_id.decode()
-        _cancel(queue, str(previous_job_id))
-
-    # Enqueue immediately. The processing job waits the quiet period itself;
-    # this works with SimpleWorker on Railway and does not depend on the
-    # scheduler polling scheduled jobs.
-    job = queue.enqueue("app.queue.tasks.process_wa_id", wa_id)
-    r.set(f"debounce:{wa_id}", job.id, ex=30)
-
-
-def _cancel(queue: Queue, job_id: str) -> None:
-    try:
-        Job.fetch(job_id, connection=queue.connection).cancel()
-    except Exception:
-        pass
+    job = queue.create_job(
+        "app.queue.tasks.process_wa_id",
+        args=(wa_id,),
+        timeout=120,
+        retry=Retry(max=4, interval=[10, 30, 60, 120]),
+        description=f"conversation:{hash_wa_id(wa_id)}",
+    )
+    queue.enqueue_job(job, pipeline=pipeline)

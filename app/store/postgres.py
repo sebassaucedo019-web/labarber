@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
+from app.identity import phone_aliases
 from app.observability import hash_wa_id
 from app.store.models import Appointment, Base, Conversation, MessageLog
 
@@ -16,28 +16,36 @@ _database_url = get_settings().database_url
 _engine_options = {"pool_pre_ping": True}
 if _database_url.startswith("sqlite"):
     _engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_options["connect_args"] = {
+        "connect_timeout": 5,
+        "options": "-c statement_timeout=10000",
+    }
+    _engine_options["pool_timeout"] = 5
 
 _engine = create_engine(_database_url, **_engine_options)
 SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
 
 def init_db() -> None:
-    Base.metadata.create_all(_engine)
-    if "appointments" in inspect(_engine).get_table_names():
-        columns = {column["name"] for column in inspect(_engine).get_columns("appointments")}
+    with _engine.begin() as connection:
+        # Web and worker can start simultaneously on Railway.
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("SELECT pg_advisory_xact_lock(7419302)"))
+        Base.metadata.create_all(connection)
+        columns = {column["name"] for column in inspect(connection).get_columns("appointments")}
         if "barber" not in columns:
-            with _engine.begin() as connection:
-                connection.execute(text("ALTER TABLE appointments ADD COLUMN barber VARCHAR(80)"))
-    # create_all does not add indexes to tables that already existed before the
-    # index was introduced. Ensure the booking race-condition guard is present
-    # on existing Railway databases too.
-    try:
-        next(index for index in Appointment.__table__.indexes if index.name == "uq_confirmed_barber_slot").create(
-            bind=_engine,
+            connection.execute(text("ALTER TABLE appointments ADD COLUMN barber VARCHAR(80)"))
+        # Existing databases also need the uniqueness guard. Fail startup if
+        # conflicting data prevents it; never silently book without protection.
+        next(
+            index
+            for index in Appointment.__table__.indexes
+            if index.name == "uq_confirmed_barber_slot"
+        ).create(
+            bind=connection,
             checkfirst=True,
         )
-    except SQLAlchemyError:
-        logger.exception("no se pudo asegurar el indice anti doble reserva")
 
 
 def get_session() -> Session:
@@ -45,7 +53,11 @@ def get_session() -> Session:
 
 
 def load_history(session: Session, wa_id: str) -> bytes:
-    row = session.get(Conversation, wa_id)
+    row = session.scalar(
+        select(Conversation)
+        .where(Conversation.wa_id.in_(phone_aliases(wa_id)))
+        .order_by(Conversation.updated_at.desc())
+    )
     return row.history_json.encode() if row and row.history_json else b""
 
 

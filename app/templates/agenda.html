@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#14412F">
+  <meta name="referrer" content="no-referrer">
+  <title>$title | BARBER CG</title>
+  <link rel="stylesheet" href="/agenda-assets/agenda.css">
+  <script src="/agenda-assets/agenda.js" defer></script>
+</head>
+<body>
+  <header class="brand-bar">
+    <div class="brand-inner">
+      <div class="brand">
+        <span class="brand-mark">$scissors_icon</span>
+        <div><strong>BARBER CG</strong><span>Chihuahua, México</span></div>
+      </div>
+      <span class="private-label">$lock_icon<span>Agenda privada</span></span>
+    </div>
+  </header>
+  <main class="agenda-shell">
+    <header class="page-heading">
+      <div>
+        <p class="scope-label">$scope_label</p>
+        <h1>Agenda</h1>
+        <p class="date-range">$date_range</p>
+      </div>
+      <div class="refresh-wrap">
+        <button class="icon-button" id="refresh" type="button" aria-label="Actualizar agenda"
+                aria-describedby="refresh-tooltip">$refresh_icon</button>
+        <span class="tooltip" id="refresh-tooltip" role="tooltip">Actualizar agenda</span>
+      </div>
+    </header>
+    <section class="week-strip" aria-labelledby="week-label">
+      <div class="week-heading"><h2 id="week-label">Próximos 7 días</h2><span>$summary</span></div>
+      <div class="dates" role="tablist" aria-label="Seleccionar día">$dates</div>
+    </section>
+    <div id="sections">$sections</div>
+    <footer class="agenda-footer">
+      <span>$clock_icon Actualizada a las <time>$updated_at</time></span>
+      <span>Hora de Chihuahua</span>
+    </footer>
+  </main>
+</body>
+</html>

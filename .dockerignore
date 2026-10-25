@@ -6,3 +6,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .env
+.env.*
+!.env.example
+*.db
+*.db-*
+.uv-cache/

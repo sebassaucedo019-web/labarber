@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.agenda import create_agenda_link
 from app.agent.deps import BotDeps
 from app.agent.tools import (
     _notify_staff_of_appointment,
@@ -16,9 +17,14 @@ from app.agent.tools import (
     ver_agenda,
     ver_siguiente_cita,
 )
-from app.agenda import create_agenda_link
 from app.config import get_settings
 from app.store.models import Appointment, Base
+
+
+@pytest.fixture(autouse=True)
+def business_rules_after_confirmation(monkeypatch):
+    # The confirmation lifecycle is exercised separately in test_confirmation.py.
+    monkeypatch.setattr("app.agent.tools.confirm_action", lambda *args: True)
 
 
 def make_deps(wa_id: str = "5216143649949") -> tuple[Session, BotDeps]:
@@ -37,23 +43,31 @@ def test_agendar_guarda_y_evita_traslape():
     when = datetime.now() + timedelta(days=1)
     when = when.replace(hour=17, minute=0, second=0, microsecond=0)
 
-    result = agendar(as_ctx(deps), when.strftime("%Y-%m-%d %H:%M"), "corte clásico", "Sebastián", "Obed")
-    duplicate = agendar(as_ctx(deps), when.strftime("%Y-%m-%d %H:%M"), "corte clásico", "Sebastián", "Obed")
+    result = agendar(
+        as_ctx(deps), when.strftime("%Y-%m-%d %H:%M"), "corte clásico", "Sebastián", "Obed"
+    )
+    duplicate = agendar(
+        as_ctx(deps), when.strftime("%Y-%m-%d %H:%M"), "corte clásico", "Sebastián", "Obed"
+    )
 
     assert "Cita confirmada" in result
-    assert "ocupado" in duplicate
+    assert "ya estaba confirmada" in duplicate
+    other = agendar(as_ctx(deps), when.strftime("%Y-%m-%d %H:%M"), "corte normal", "Otra", "Obed")
+    assert "ocupado" in other
 
 
 def test_cancelar_respeta_tres_horas():
     session, deps = make_deps("5216999999999")
     when = datetime.now() + timedelta(hours=2)
     when = when.replace(second=0, microsecond=0)
-    session.add(Appointment(
-        wa_id=deps.wa_id,
-        customer_name="Sebastián",
-        service="corte normal",
-        starts_at=when,
-    ))
+    session.add(
+        Appointment(
+            wa_id=deps.wa_id,
+            customer_name="Sebastián",
+            service="corte normal",
+            starts_at=when,
+        )
+    )
     session.commit()
 
     result = cancelar_cita(as_ctx(deps), when.strftime("%Y-%m-%d %H:%M"))
@@ -80,20 +94,24 @@ def test_cliente_consulta_solo_sus_citas() -> None:
     session, deps = make_deps("5216140000001")
     when = datetime.now() + timedelta(days=1)
     when = when.replace(hour=10, minute=0, second=0, microsecond=0)
-    session.add(Appointment(
-        wa_id=deps.wa_id,
-        customer_name="Ana",
-        service="corte normal",
-        barber="Obed",
-        starts_at=when,
-    ))
-    session.add(Appointment(
-        wa_id="5216140000002",
-        customer_name="Luis",
-        service="corte clásico",
-        barber="Yadier",
-        starts_at=when.replace(hour=11),
-    ))
+    session.add(
+        Appointment(
+            wa_id=deps.wa_id,
+            customer_name="Ana",
+            service="corte normal",
+            barber="Obed",
+            starts_at=when,
+        )
+    )
+    session.add(
+        Appointment(
+            wa_id="5216140000002",
+            customer_name="Luis",
+            service="corte clásico",
+            barber="Yadier",
+            starts_at=when.replace(hour=11),
+        )
+    )
     session.commit()
 
     result = consultar_mi_cita(as_ctx(deps))
@@ -108,20 +126,24 @@ def test_dueno_ve_todas_y_barbero_solo_las_suyas(monkeypatch: pytest.MonkeyPatch
     session, owner_deps = make_deps("5216110000000")
     when = datetime.now() + timedelta(days=1)
     when = when.replace(hour=10, minute=0, second=0, microsecond=0)
-    session.add(Appointment(
-        wa_id="5216140000001",
-        customer_name="Ana",
-        service="corte normal",
-        barber="Obed",
-        starts_at=when,
-    ))
-    session.add(Appointment(
-        wa_id="5216140000002",
-        customer_name="Luis",
-        service="corte clásico",
-        barber="Yadier",
-        starts_at=when.replace(hour=11),
-    ))
+    session.add(
+        Appointment(
+            wa_id="5216140000001",
+            customer_name="Ana",
+            service="corte normal",
+            barber="Obed",
+            starts_at=when,
+        )
+    )
+    session.add(
+        Appointment(
+            wa_id="5216140000002",
+            customer_name="Luis",
+            service="corte clásico",
+            barber="Yadier",
+            starts_at=when.replace(hour=11),
+        )
+    )
     session.commit()
 
     owner_list = ver_agenda(as_ctx(owner_deps))
@@ -153,7 +175,7 @@ def test_confirmed_appointment_notifies_owner_and_assigned_barber(
     _set_staff_ids(monkeypatch)
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "app.agent.tools.send_text",
+        "app.agent.tools._send_notification",
         lambda recipient, message: sent.append((recipient, message)),
     )
     appointment = Appointment(
@@ -175,20 +197,22 @@ def test_cancel_and_reschedule_notify_staff(monkeypatch: pytest.MonkeyPatch) -> 
     _set_staff_ids(monkeypatch)
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "app.agent.tools.send_text",
+        "app.agent.tools._send_notification",
         lambda recipient, message: sent.append((recipient, message)),
     )
     session, deps = make_deps("5216999999999")
     first = datetime.now() + timedelta(days=2)
     first = first.replace(hour=10, minute=0, second=0, microsecond=0)
     second = first.replace(hour=11)
-    session.add(Appointment(
-        wa_id=deps.wa_id,
-        customer_name="Ana",
-        service="corte normal",
-        barber="Obed",
-        starts_at=first,
-    ))
+    session.add(
+        Appointment(
+            wa_id=deps.wa_id,
+            customer_name="Ana",
+            service="corte normal",
+            barber="Obed",
+            starts_at=first,
+        )
+    )
     session.commit()
 
     result = reagendar_cita(
@@ -210,48 +234,52 @@ def test_barber_can_cancel_own_assigned_appointment_without_three_hour_limit(
     _set_staff_ids(monkeypatch)
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "app.agent.tools.send_text",
+        "app.agent.tools._send_notification",
         lambda recipient, message: sent.append((recipient, message)),
     )
     session, barber_deps = make_deps("5216111111111")
     when = datetime.now() + timedelta(hours=1)
     when = when.replace(second=0, microsecond=0)
-    session.add(Appointment(
-        wa_id="5216999999999",
-        customer_name="Miguel",
-        service="corte normal",
-        barber="Obed",
-        starts_at=when,
-    ))
+    session.add(
+        Appointment(
+            wa_id="5216999999999",
+            customer_name="Miguel",
+            service="corte normal",
+            barber="Obed",
+            starts_at=when,
+        )
+    )
     session.commit()
 
-    result = cancelar_cita(
-        as_ctx(barber_deps), when.strftime("%Y-%m-%d %H:%M"), "miguel"
-    )
+    result = cancelar_cita(as_ctx(barber_deps), when.strftime("%Y-%m-%d %H:%M"), "miguel")
 
     assert "cancelada" in result
     assert any("Cita cancelada" in message for _, message in sent)
     get_settings.cache_clear()
 
 
-def test_reschedule_can_change_barber_and_notifies_new_staff(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reschedule_can_change_barber_and_notifies_new_staff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _set_staff_ids(monkeypatch)
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "app.agent.tools.send_text",
+        "app.agent.tools._send_notification",
         lambda recipient, message: sent.append((recipient, message)),
     )
     session, deps = make_deps("5216999999999")
     first = datetime.now() + timedelta(days=2)
     first = first.replace(hour=10, minute=0, second=0, microsecond=0)
     second = first.replace(hour=11)
-    session.add(Appointment(
-        wa_id=deps.wa_id,
-        customer_name="Ana",
-        service="corte normal",
-        barber="Jesús",
-        starts_at=first,
-    ))
+    session.add(
+        Appointment(
+            wa_id=deps.wa_id,
+            customer_name="Ana",
+            service="corte normal",
+            barber="Jesús",
+            starts_at=first,
+        )
+    )
     session.commit()
 
     result = reagendar_cita(
@@ -264,7 +292,9 @@ def test_reschedule_can_change_barber_and_notifies_new_staff(monkeypatch: pytest
     recipients = {recipient for recipient, _ in sent}
     assert {"5216110000000", "5216111111111", "5216112222222"} == recipients
     assert any("Cambio de barbero" in message for _, message in sent)
-    assert all("Antes:" not in message for _, message in sent if message.startswith("Cambio de barbero en"))
+    assert all(
+        "Antes:" not in message for _, message in sent if message.startswith("Cambio de barbero en")
+    )
     get_settings.cache_clear()
 
 
@@ -285,12 +315,8 @@ def test_booking_rejects_closing_time_and_invalid_minutes() -> None:
     session, deps = make_deps()
     tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    at_closing = agendar(
-        as_ctx(deps), f"{tomorrow} 20:00", "corte normal", "Ana", "Obed"
-    )
-    invalid_minutes = agendar(
-        as_ctx(deps), f"{tomorrow} 10:15", "corte normal", "Ana", "Obed"
-    )
+    at_closing = agendar(as_ctx(deps), f"{tomorrow} 20:00", "corte normal", "Ana", "Obed")
+    invalid_minutes = agendar(as_ctx(deps), f"{tomorrow} 10:15", "corte normal", "Ana", "Obed")
 
     assert "09:00 a 20:00" in at_closing
     assert "09:00 a 20:00" in invalid_minutes

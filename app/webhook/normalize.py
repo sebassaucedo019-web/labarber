@@ -10,7 +10,9 @@ class InboundText(TypedDict):
     text: str
 
 
-def extract_text_messages(payload: dict[str, Any]) -> Iterator[InboundText]:
+def extract_text_messages(
+    payload: dict[str, Any], *, phone_number_id: str | None = None
+) -> Iterator[InboundText]:
     """Solo mensajes de texto. Para audio, ver examples/audio_transcripcion."""
     entries = payload.get("entry", [])
     if not isinstance(entries, list):
@@ -18,13 +20,26 @@ def extract_text_messages(payload: dict[str, Any]) -> Iterator[InboundText]:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        for change in entry.get("changes", []):
+        changes = entry.get("changes", [])
+        if not isinstance(changes, list):
+            continue
+        for change in changes:
             if not isinstance(change, dict):
                 continue
             value = change.get("value", {})
             if not isinstance(value, dict):
                 continue
-            for message in value.get("messages", []):
+            if phone_number_id:
+                metadata = value.get("metadata")
+                if (
+                    not isinstance(metadata, dict)
+                    or metadata.get("phone_number_id") != phone_number_id
+                ):
+                    continue
+            messages = value.get("messages", [])
+            if not isinstance(messages, list):
+                continue
+            for message in messages:
                 if not isinstance(message, dict):
                     continue
                 message_type = message.get("type")
@@ -38,7 +53,14 @@ def extract_text_messages(payload: dict[str, Any]) -> Iterator[InboundText]:
                     reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
                     if not isinstance(reply, dict):
                         continue
-                    text = reply.get("title") or reply.get("id") or ""
+                    button_id = reply.get("id")
+                    intents = {
+                        "services": "Ver servicios",
+                        "book": "Agendar cita",
+                        "my_appointment": "Consultar mi cita",
+                    }
+                    text = intents.get(button_id, "") if isinstance(button_id, str) else ""
+                    text = text or reply.get("title") or ""
                 else:
                     continue
                 if not isinstance(text, str):
