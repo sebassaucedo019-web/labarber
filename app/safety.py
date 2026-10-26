@@ -7,11 +7,12 @@ OUT_OF_SCOPE_REPLY = (
 
 STAFF_HELP_REPLY = (
     "Este número está registrado como parte del equipo de BARBER CG. "
-    "Puedo mostrarte la agenda, la siguiente cita o ayudarte a cancelar una cita."
+    "Puedo mostrarte la agenda, la siguiente cita, registrar una cita para un cliente "
+    "con su nombre y teléfono, o ayudarte a cancelarla."
 )
 STAFF_OUT_OF_SCOPE_REPLY = (
     "Solo te ayudo con la operación de BARBER CG. "
-    "¿Necesitas la agenda, la siguiente cita o cancelar una cita?"
+    "¿Necesitas la agenda, registrar una cita para un cliente o cancelar una cita?"
 )
 
 

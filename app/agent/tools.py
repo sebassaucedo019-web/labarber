@@ -131,9 +131,16 @@ def _staff_recipients(appointment: Appointment) -> list[str]:
 
 
 def _notify_staff(
-    appointment: Appointment, message: str, *, session: Session, event_id: str
+    appointment: Appointment,
+    message: str,
+    *,
+    session: Session,
+    event_id: str,
+    exclude_recipient: str | None = None,
 ) -> None:
     for recipient in _staff_recipients(appointment):
+        if normalize_phone(recipient) == normalize_phone(exclude_recipient):
+            continue
         _send_notification(
             recipient, message, session=session, appointment_id=appointment.id, event_id=event_id
         )
@@ -148,7 +155,11 @@ def _send_notification(
 
 
 def _notify_staff_of_appointment(
-    appointment: Appointment, *, session: Session, event_id: str
+    appointment: Appointment,
+    *,
+    session: Session,
+    event_id: str,
+    exclude_recipient: str | None = None,
 ) -> None:
     _notify_staff(
         appointment,
@@ -158,6 +169,7 @@ def _notify_staff_of_appointment(
         "La cita quedó confirmada.",
         session=session,
         event_id=event_id,
+        exclude_recipient=exclude_recipient,
     )
 
 
@@ -245,6 +257,57 @@ def agendar(
     """Guarda una cita tras validar servicio, horario y disponibilidad."""
     if staff_scope(ctx.deps.wa_id) is not None:
         return STAFF_HELP_REPLY
+    return _book_appointment(ctx, fecha_hora, servicio, nombre, barbero, ctx.deps.wa_id)
+
+
+def agendar_para_cliente(
+    ctx: RunContext[BotDeps],
+    fecha_hora: str,
+    servicio: str,
+    nombre: str,
+    telefono: str,
+    barbero: str | None = None,
+) -> str:
+    """El equipo registra una cita para un cliente, con su teléfono y confirmación.
+
+    Un barbero solo reserva en su agenda; el dueño debe elegir el barbero.
+    Usa el nombre y teléfono facilitados por el equipo, nunca inventes esos datos.
+    """
+    scope = staff_scope(ctx.deps.wa_id)
+    if scope is None:
+        return "Solo el equipo autorizado puede registrar citas para clientes desde este flujo."
+    target = _barber_key(barbero) if barbero is not None else scope if scope != "all" else None
+    if target is None:
+        return "Elige el barbero de la cita: Obed, Jesús o Yadier."
+    if scope != "all" and target != scope:
+        return f"Solo puedes registrar citas en tu propia agenda ({scope})."
+    # Bare numbers are Mexican; international numbers must include an explicit +.
+    customer = normalize_phone(telefono)
+    digits = "".join(char for char in telefono if char in "0123456789")
+    mexican = (
+        len(digits) == 10
+        or (len(digits) == 12 and digits.startswith("52"))
+        or (len(digits) == 13 and digits.startswith("521"))
+    )
+    if customer is None or (not mexican and not telefono.strip().startswith("+")):
+        return "Necesito el teléfono del cliente: 10 dígitos en México o + y código de país."
+    if staff_scope(customer) is not None:
+        return "Ese teléfono pertenece al equipo. Necesito el teléfono del cliente de esta cita."
+    return _book_appointment(
+        ctx, fecha_hora, servicio, nombre, target, customer, staff_booking=True
+    )
+
+
+def _book_appointment(
+    ctx: RunContext[BotDeps],
+    fecha_hora: str,
+    servicio: str,
+    nombre: str,
+    barbero: str,
+    customer: str,
+    *,
+    staff_booking: bool = False,
+) -> str:
     starts_at = _parse_datetime(fecha_hora)
     service = _service_key(servicio)
     barber = _barber_key(barbero)
@@ -260,7 +323,11 @@ def agendar(
     if not _valid_slot(starts_at):
         return "Atendemos de 09:00 a 20:00; elige una hora en punto o a los 30 minutos."
     if not nombre.strip():
-        return "También necesito tu nombre para reservar la cita."
+        return (
+            "Necesito el nombre del cliente para registrar la cita."
+            if staff_booking
+            else ("También necesito tu nombre para reservar la cita.")
+        )
     if starts_at <= _now():
         return "Esa fecha y hora ya pasó."
     conflict = ctx.deps.db.scalar(
@@ -272,7 +339,7 @@ def agendar(
     )
     if conflict:
         if (
-            conflict.wa_id in phone_aliases(ctx.deps.wa_id)
+            conflict.wa_id in phone_aliases(customer)
             and conflict.customer_name.casefold() == nombre.strip().casefold()
             and _service_key(conflict.service) == service
         ):
@@ -280,19 +347,21 @@ def agendar(
         return "Ese horario ya está ocupado. Consulta disponibilidad para elegir otro."
     if not confirm_action(
         ctx.deps,
-        "book",
+        "staff_book" if staff_booking else "book",
         {
             "starts_at": starts_at.isoformat(),
             "service": service,
             "name": nombre.strip()[:120],
             "barber": barber,
+            **({"customer_phone": customer} if staff_booking else {}),
         },
         f"Reservar para {nombre.strip()[:120]}: {service} (${SERVICES[service]} MXN), "
-        f"{starts_at:%d/%m/%Y %H:%M} con {barber}.",
+        f"{starts_at:%d/%m/%Y %H:%M} con {barber}."
+        + (f"\nTeléfono del cliente: +{customer}." if staff_booking else ""),
     ):
         return ctx.deps.pending_action_reply
     appointment = Appointment(
-        wa_id=ctx.deps.wa_id,
+        wa_id=customer,
         customer_name=nombre.strip()[:120],
         service=service,
         barber=barber,
@@ -301,7 +370,23 @@ def agendar(
     try:
         ctx.deps.db.add(appointment)
         ctx.deps.db.flush()
-        _notify_staff_of_appointment(appointment, session=ctx.deps.db, event_id=uuid4().hex)
+        event_id = uuid4().hex
+        _notify_staff_of_appointment(
+            appointment,
+            session=ctx.deps.db,
+            event_id=event_id,
+            exclude_recipient=ctx.deps.wa_id if staff_booking else None,
+        )
+        if staff_booking:
+            _send_notification(
+                customer,
+                "El equipo de BARBER CG registró tu cita:\n"
+                + _format_appointment(appointment)
+                + ".\nPuedes escribirnos para consultar o gestionar tu cita.",
+                session=ctx.deps.db,
+                appointment_id=appointment.id,
+                event_id=event_id,
+            )
         ctx.deps.db.commit()
     except IntegrityError:
         ctx.deps.db.rollback()

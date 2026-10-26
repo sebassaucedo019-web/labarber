@@ -57,14 +57,16 @@ def welcome_menu_content(wa_id: str) -> tuple[str, list[tuple[str, str]]]:
     scope = staff_scope(wa_id)
     if scope is not None:
         body = (
-            "Hola. Panel del equipo de BARBER CG.\nPuedes consultar la agenda general y cancelar citas."
+            "Hola. Panel del equipo de BARBER CG.\nPuedes consultar la agenda general, "
+            "registrar citas para clientes y cancelar citas."
             if scope == "all"
             else f"Hola, {scope}. Panel del equipo de BARBER CG.\n"
-            "Puedes consultar tu agenda y cancelar las citas asignadas a ti."
+            "Puedes consultar tu agenda, registrar citas para clientes y cancelar tus citas."
         )
+        body += '\nPara consultar la próxima, escribe "qué cita sigue".'
         return body, [
             ("staff_agenda", "Agenda general" if scope == "all" else "Mi agenda"),
-            ("staff_next", "Siguiente cita"),
+            ("staff_book", "Agregar cita"),
             ("staff_cancel", "Cancelar cita"),
         ]
     return (

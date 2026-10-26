@@ -14,6 +14,7 @@ from app.agenda import staff_scope
 from app.agent.deps import BotDeps
 from app.agent.tools import (
     agendar,
+    agendar_para_cliente,
     cancelar_cita,
     consultar_disponibilidad,
     consultar_mi_cita,
@@ -66,7 +67,7 @@ Si el usuario está saludando o dando la bienvenida, sin importar si escribe "ho
 "buenas", "qué onda", "hey", "saludos", con errores, abreviaciones o alargando
 letras, usa la herramienta mostrar_menu_principal. Esa herramienta prepara los
 botones según el rol verificado: "Servicios", "Agendar" y "Mi cita" para clientes;
-agenda, siguiente cita y cancelar cita para el equipo. Después de usarla,
+agenda, agregar cita para un cliente y cancelar cita para el equipo. Después de usarla,
 no escribas otra respuesta de texto. Si el saludo viene junto con una petición,
 atiende la petición y no muestres únicamente el menú.
 
@@ -88,10 +89,16 @@ completo $300 MXN. Solo con clientes, para una cita sigue este flujo: pide servi
 nombre; convierte hoy/mañana a fecha exacta; consulta disponibilidad; usa agendar
 para preparar la propuesta que debe confirmar el cliente. Nunca inventes
 horarios ni digas que quedó agendada si la herramienta no la guarda.
+Para registrar una cita solicitada por el equipo, usa agendar_para_cliente: pide
+nombre y teléfono del cliente, servicio, fecha y hora. No vincules la cita al teléfono
+del barbero. Cada barbero agenda solo consigo mismo; el dueño elige el barbero.
+No inventes teléfonos ni reutilices el de otra cita. Si no hay teléfono, pide el dato.
 Las herramientas de reservar, cambiar y cancelar primero devuelven una propuesta
-pendiente. Muéstrala al cliente. Cuando responda sí o confirmo, vuelve a llamar la
+pendiente. Muéstrala a quien realiza la solicitud. Cuando responda sí o confirmo, vuelve a llamar la
 misma herramienta con los mismos datos. Solo su resultado final confirma el cambio.
 Una propuesta pendiente nunca significa que la cita ya fue guardada o cancelada.
+Registrar una cita no prueba que el cliente haya recibido un aviso: no afirmes que
+WhatsApp lo entregó sin evidencia de entrega.
 Si el cliente dice "dentro de una hora", "dentro de dos horas" o algo parecido,
 calcula desde la fecha y hora actuales indicadas en el mensaje; redondea al siguiente
 bloque de 30 minutos y confirma la hora exacta antes de agendar.
@@ -144,6 +151,8 @@ async def _prepare_role_tool(
     ctx: RunContext[BotDeps], tool_def: ToolDefinition
 ) -> ToolDefinition | None:
     scope = staff_scope(ctx.deps.wa_id)
+    if scope is None and tool_def.name == "agendar_para_cliente":
+        return None
     if scope is not None and tool_def.name in {"agendar", "reagendar_cita", "consultar_mi_cita"}:
         return None
     if scope == "all" and tool_def.name == "escalar_humano":
@@ -188,6 +197,7 @@ def get_agent() -> Agent[BotDeps, str]:
                 consultar_mi_cita,
                 mostrar_menu_principal,
                 agendar,
+                agendar_para_cliente,
                 cancelar_cita,
                 reagendar_cita,
                 ver_siguiente_cita,
@@ -210,24 +220,29 @@ def _caller_context(ctx: RunContext[BotDeps]) -> str:
     if scope is None:
         return identity
     access = (
-        "Puedes consultar la agenda general y cancelar citas de cualquier barbero. "
+        "Puedes consultar la agenda general, registrar citas para clientes y cancelar "
+        "citas de cualquier barbero. Para registrar debes preguntar cuál barbero. "
         "No escales consultas del dueño al propio dueño. "
         if scope == "all"
-        else f"Solo puedes consultar y cancelar las citas asignadas a {scope}. "
+        else f"Solo puedes consultar, registrar y cancelar citas en la agenda de {scope}. "
+        f"Al registrar una cita para un cliente, el barbero predeterminado es {scope}. "
     )
     return (
         identity + "\nModo equipo: esta persona trabaja en la barbería, no es un cliente. "
         "No ofrezcas reservar ni le pidas servicio o nombre para agendarle una cita personal. "
         "Los números del equipo no crean ni reagendan reservas personales en este flujo, "
         "tampoco reservas para terceros vinculadas al teléfono del barbero. "
+        "Sí pueden registrar citas para clientes con agendar_para_cliente, usando el "
+        "nombre y teléfono reales del cliente, servicio, fecha y hora. "
         "Responde consultas operativas de la barbería sin promociones ni preguntas de venta. "
         "Al saludar, usa mostrar_menu_principal para el menú del equipo. "
         "Para 'mi cita', 'qué sigue' o un botón antiguo de consulta, usa ver_siguiente_cita. "
         "Para agenda o link, usa obtener_enlace_agenda; para una lista, ver_agenda. "
-        "Si pulsa Agendar en un menú antiguo o pide una reserva personal, explica brevemente "
-        "que este número está en modo equipo y ofrece agenda, siguiente cita o cancelación. "
+        "Si pulsa Agregar cita o Agendar en un menú antiguo, pregunta los datos del cliente "
+        "para registrarla con agendar_para_cliente. Si pide una cita para sí mismo, explica "
+        "que este número está en modo equipo y solo registra citas para clientes. "
         "No sugieras cancelar y volver a reservar para eludir estas restricciones. "
-        "Si la petición es ambigua, aclara qué necesita de su agenda; no inicies una reserva. "
+        "Si la petición es ambigua, aclara los datos antes de preparar una propuesta. "
         + access
         + "Las cancelaciones del equipo no tienen el límite de tres horas, "
         "pero requieren identificar una cita y confirmar la propuesta en otro mensaje. "

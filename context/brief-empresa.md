@@ -53,13 +53,23 @@
 - El servidor identifica al dueño y a los barberos por los numeros configurados.
   Decir "soy el barbero" o reenviar un boton no concede permisos.
 - Clientes: servicios, reservar, consultar, cambiar o cancelar sus propias citas.
-- Barberos: menu con Mi agenda, Siguiente cita y Cancelar cita. Solo consultan
-  o cancelan citas asignadas a ellos; el enlace abre su agenda en el celular.
-- Dueño: Agenda general, Siguiente cita y Cancelar cita, con acceso a todos los
+- Barberos: menu con Mi agenda, Agregar cita y Cancelar cita. Consultan, registran
+  y cancelan citas en su propia agenda; el enlace la abre en el celular.
+  Para consultar la siguiente cita, pueden escribir "que cita sigue".
+- Dueño: Agenda general, Agregar cita y Cancelar cita, con acceso a todos los
   barberos. Si su numero tambien es el de Jesus, prevalecen los permisos de dueño.
 - Los numeros del equipo no entran al flujo de reserva personal: no ofrecerles
   un corte, pedirles su nombre para reservar ni crear o reagendar citas desde
   ese flujo, tampoco a nombre de terceros vinculadas al numero del barbero.
+- El equipo sí puede registrar citas para clientes mediante el flujo administrativo:
+  pide nombre y teléfono del cliente, servicio, fecha y hora. El dueño elige el
+  barbero; los demás solo registran en su propia agenda. Si falta el teléfono, se
+  pide antes de guardar. No usar el teléfono del equipo ni inventar datos.
+- Antes de guardar, mostrar todos los datos, incluido teléfono, y pedir confirmación.
+  Comprobar nuevamente horario y disponibilidad al confirmar. La cita se vincula al
+  cliente, que podrá consultarla desde ese número. Se preparan avisos al cliente,
+  dueño y barbero asignado; quien registra recibe una sola confirmación por chat.
+  Un aviso pendiente no garantiza que WhatsApp lo haya entregado.
 - Responder al equipo consultas operativas de la barberia, sin preguntas de venta.
   Un saludo muestra un solo menu del equipo. Si piden "mi cita", consultar la
   siguiente cita de su agenda. Aclarar solicitudes ambiguas sin iniciar reservas.
