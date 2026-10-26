@@ -1,32 +1,19 @@
 import logging
 from unittest.mock import Mock
 
-import fakeredis
 import pytest
-from rq import Queue
 
 from app import notifications, sender
 from app.observability import RedactAccessQuery
 
-REAL_NOTIFY = notifications.notify
 
-
-def test_notification_job_retries_failed_delivery(monkeypatch):
-    # The autouse fixture disables notifications in business tests; test the
-    # real implementation here without permitting external HTTP requests.
-    queue = Queue(connection=fakeredis.FakeRedis(decode_responses=False))
-    monkeypatch.setattr(notifications, "get_queue", lambda: queue)
+def test_legacy_notification_job_can_finish_after_upgrade(monkeypatch):
     delivery = Mock(return_value=False)
     monkeypatch.setattr(notifications, "send_text", delivery)
-    REAL_NOTIFY("526141111111", "Cita confirmada")
-    assert queue.count == 1
-    job = queue.jobs[0]
-    assert job.retries_left == 3
-    assert job.retry_intervals == [15, 60, 300]
     with pytest.raises(RuntimeError, match="rechaz"):
-        notifications.deliver_notification(*job.args)
+        notifications.deliver_notification("526141111111", "Cita confirmada")
     delivery.return_value = True
-    notifications.deliver_notification(*job.args)
+    notifications.deliver_notification("526141111111", "Cita confirmada")
     assert delivery.call_count == 2
 
 

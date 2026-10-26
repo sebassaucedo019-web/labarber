@@ -109,7 +109,9 @@ def test_barber_cannot_cancel_another_barbers_appointment(db, staff):
 def test_staff_cancel_notifies_customer_and_has_receipt(db, staff, monkeypatch):
     row = appointment(db, when=tools._now() + timedelta(minutes=20))
     sent = []
-    monkeypatch.setattr(tools, "_send_notification", lambda to, text: sent.append((to, text)))
+    monkeypatch.setattr(
+        tools, "_send_notification", lambda to, text, **kwargs: sent.append((to, text))
+    )
     caller = ctx(db, "5216141111111")
     # Tools accept minute precision, as all actual bookings do.
     row.starts_at = row.starts_at.replace(second=0, microsecond=0)
@@ -136,7 +138,7 @@ def test_customer_can_find_existing_legacy_number_bookings(db):
 def test_rescheduling_same_slot_is_noop(db, monkeypatch):
     row = appointment(db)
     called = []
-    monkeypatch.setattr(tools, "_send_notification", lambda *args: called.append(args))
+    monkeypatch.setattr(tools, "_send_notification", lambda *args, **kwargs: called.append(args))
     when = row.starts_at.strftime("%Y-%m-%d %H:%M")
     assert "ya tiene" in tools.reagendar_cita(ctx(db), when, when)
     assert not called

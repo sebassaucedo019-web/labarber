@@ -42,7 +42,6 @@ def _required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setattr("app.notifications.notify", lambda recipient, message: None)
 
 
 @pytest.fixture(autouse=True)

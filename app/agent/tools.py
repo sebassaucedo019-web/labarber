@@ -1,10 +1,12 @@
 import logging
 from datetime import datetime, timedelta
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from pydantic_ai import RunContext
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.agenda import agenda_link_message, staff_scope
 from app.agent.confirmation import confirm_action
@@ -128,24 +130,34 @@ def _staff_recipients(appointment: Appointment) -> list[str]:
     return unique
 
 
-def _notify_staff(appointment: Appointment, message: str) -> None:
+def _notify_staff(
+    appointment: Appointment, message: str, *, session: Session, event_id: str
+) -> None:
     for recipient in _staff_recipients(appointment):
-        _send_notification(recipient, message)
+        _send_notification(
+            recipient, message, session=session, appointment_id=appointment.id, event_id=event_id
+        )
 
 
-def _send_notification(recipient: str, message: str) -> None:
+def _send_notification(
+    recipient: str, message: str, *, session: Session, appointment_id: int, event_id: str
+) -> None:
     from app.notifications import notify
 
-    notify(recipient, message)
+    notify(recipient, message, session=session, appointment_id=appointment_id, event_id=event_id)
 
 
-def _notify_staff_of_appointment(appointment: Appointment) -> None:
+def _notify_staff_of_appointment(
+    appointment: Appointment, *, session: Session, event_id: str
+) -> None:
     _notify_staff(
         appointment,
         "Confirmación de cita en BARBER CG 💈\n"
         f"{_format_appointment(appointment)}\n"
         f"Cliente: {appointment.customer_name}\n"
         "La cita quedó confirmada.",
+        session=session,
+        event_id=event_id,
     )
 
 
@@ -279,36 +291,30 @@ def agendar(
         f"{starts_at:%d/%m/%Y %H:%M} con {barber}.",
     ):
         return ctx.deps.pending_action_reply
-    ctx.deps.db.add(
-        Appointment(
-            wa_id=ctx.deps.wa_id,
-            customer_name=nombre.strip()[:120],
-            service=service,
-            barber=barber,
-            starts_at=starts_at,
-        )
+    appointment = Appointment(
+        wa_id=ctx.deps.wa_id,
+        customer_name=nombre.strip()[:120],
+        service=service,
+        barber=barber,
+        starts_at=starts_at,
     )
     try:
+        ctx.deps.db.add(appointment)
+        ctx.deps.db.flush()
+        _notify_staff_of_appointment(appointment, session=ctx.deps.db, event_id=uuid4().hex)
         ctx.deps.db.commit()
     except IntegrityError:
         ctx.deps.db.rollback()
         return "Ese horario acaba de ocuparse. Consulta disponibilidad para elegir otro."
+    except Exception:
+        ctx.deps.db.rollback()
+        raise
     confirmation = (
         f"Cita confirmada para {nombre.strip()}, {service} "
         f"(${SERVICES[service]} MXN), el {starts_at:%d/%m/%Y} "
         f"a las {starts_at:%H:%M}, con {barber}."
     )
     ctx.deps.completed_actions.append(confirmation)
-    appointment = ctx.deps.db.scalar(
-        select(Appointment).where(
-            Appointment.wa_id == ctx.deps.wa_id,
-            Appointment.starts_at == starts_at,
-            Appointment.barber == barber,
-            Appointment.status == "confirmed",
-        )
-    )
-    if appointment is not None:
-        _notify_staff_of_appointment(appointment)
     return confirmation
 
 
@@ -364,24 +370,34 @@ def cancelar_cita(
     ):
         return ctx.deps.pending_action_reply
     appointment.status = "cancelled"
-    ctx.deps.db.commit()
+    event_id = uuid4().hex
+    try:
+        _notify_staff(
+            appointment,
+            "Cita cancelada en BARBER CG 💈\n"
+            f"{_format_appointment(appointment)}\n"
+            f"Cliente: {appointment.customer_name}",
+            session=ctx.deps.db,
+            event_id=event_id,
+        )
+        if (is_admin or barber_filter) and normalize_phone(appointment.wa_id) != normalize_phone(
+            ctx.deps.wa_id
+        ):
+            _send_notification(
+                appointment.wa_id,
+                "BARBER CG canceló tu cita: "
+                + _format_appointment(appointment)
+                + ". Escríbenos para elegir otro horario.",
+                session=ctx.deps.db,
+                appointment_id=appointment.id,
+                event_id=event_id,
+            )
+        ctx.deps.db.commit()
+    except Exception:
+        ctx.deps.db.rollback()
+        raise
     confirmation = f"Cita cancelada correctamente: {_format_appointment(appointment)}."
     ctx.deps.completed_actions.append(confirmation)
-    _notify_staff(
-        appointment,
-        "Cita cancelada en BARBER CG 💈\n"
-        f"{_format_appointment(appointment)}\n"
-        f"Cliente: {appointment.customer_name}",
-    )
-    if (is_admin or barber_filter) and normalize_phone(appointment.wa_id) != normalize_phone(
-        ctx.deps.wa_id
-    ):
-        _send_notification(
-            appointment.wa_id,
-            "BARBER CG canceló tu cita: "
-            + _format_appointment(appointment)
-            + ". Escríbenos para elegir otro horario.",
-        )
     return confirmation
 
 
@@ -465,13 +481,6 @@ def reagendar_cita(
     old_barber = appointment.barber
     appointment.starts_at = new
     appointment.barber = target_barber
-    try:
-        ctx.deps.db.commit()
-    except IntegrityError:
-        ctx.deps.db.rollback()
-        return "El nuevo horario acaba de ocuparse. Consulta disponibilidad para elegir otro."
-    confirmation = f"Cita reagendada para el {new:%d/%m/%Y} a las {new:%H:%M} con {target_barber}."
-    ctx.deps.completed_actions.append(confirmation)
     if old_starts_at == new and old_barber != target_barber:
         staff_message = (
             "Cambio de barbero en BARBER CG 💈\n"
@@ -495,22 +504,33 @@ def reagendar_cita(
             f"Antes: {old_starts_at:%d/%m/%Y %H:%M} con {old_barber}\n"
             f"Ahora: {new:%d/%m/%Y %H:%M} con {target_barber}"
         )
-    _notify_staff(
-        appointment,
-        staff_message,
-    )
-    if old_barber and old_barber != target_barber:
-        old_recipient = _staff_recipient(old_barber)
-        new_recipients = {
-            normalize_phone(recipient) for recipient in _staff_recipients(appointment)
-        }
-        if old_recipient and normalize_phone(old_recipient) not in new_recipients:
-            _send_notification(
-                old_recipient,
-                "Cambio de cita en BARBER CG 💈\n"
-                f"La cita de {appointment.customer_name} pasó de {old_barber} a {target_barber}.\n"
-                f"Nueva fecha: {new:%d/%m/%Y %H:%M}.",
-            )
+    event_id = uuid4().hex
+    try:
+        _notify_staff(appointment, staff_message, session=ctx.deps.db, event_id=event_id)
+        if old_barber and old_barber != target_barber:
+            old_recipient = _staff_recipient(old_barber)
+            new_recipients = {
+                normalize_phone(recipient) for recipient in _staff_recipients(appointment)
+            }
+            if old_recipient and normalize_phone(old_recipient) not in new_recipients:
+                _send_notification(
+                    old_recipient,
+                    "Cambio de cita en BARBER CG 💈\n"
+                    f"La cita de {appointment.customer_name} pasó de {old_barber} a {target_barber}.\n"
+                    f"Nueva fecha: {new:%d/%m/%Y %H:%M}.",
+                    session=ctx.deps.db,
+                    appointment_id=appointment.id,
+                    event_id=event_id,
+                )
+        ctx.deps.db.commit()
+    except IntegrityError:
+        ctx.deps.db.rollback()
+        return "El nuevo horario acaba de ocuparse. Consulta disponibilidad para elegir otro."
+    except Exception:
+        ctx.deps.db.rollback()
+        raise
+    confirmation = f"Cita reagendada para el {new:%d/%m/%Y} a las {new:%H:%M} con {target_barber}."
+    ctx.deps.completed_actions.append(confirmation)
     return confirmation
 
 

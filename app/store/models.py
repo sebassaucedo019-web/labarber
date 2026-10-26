@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -68,4 +68,29 @@ class Appointment(Base):
             postgresql_where=text("status = 'confirmed'"),
             sqlite_where=text("status = 'confirmed'"),
         ),
+    )
+
+
+class NotificationOutbox(Base):
+    """Immutable notification payload committed with its appointment change."""
+
+    __tablename__ = "notification_outbox"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id"))
+    event_id: Mapped[str] = mapped_column(String(32))
+    recipient: Mapped[str] = mapped_column(String(32))
+    message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime)
+    lease_token: Mapped[str | None] = mapped_column(String(32))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "recipient", name="uq_notification_event_recipient"),
+        Index("ix_notification_ready", "status", "available_at"),
+        Index("ix_notification_order", "appointment_id", "recipient", "id"),
     )

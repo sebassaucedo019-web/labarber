@@ -176,7 +176,7 @@ def test_confirmed_appointment_notifies_owner_and_assigned_barber(
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "app.agent.tools._send_notification",
-        lambda recipient, message: sent.append((recipient, message)),
+        lambda recipient, message, **kwargs: sent.append((recipient, message)),
     )
     appointment = Appointment(
         wa_id="5216140000001",
@@ -186,7 +186,7 @@ def test_confirmed_appointment_notifies_owner_and_assigned_barber(
         starts_at=datetime.now() + timedelta(days=1),
     )
 
-    _notify_staff_of_appointment(appointment)
+    _notify_staff_of_appointment(appointment, session=None, event_id="test")
 
     assert {recipient for recipient, _ in sent} == {"5216110000000", "5216111111111"}
     assert all("La cita quedó confirmada" in message for _, message in sent)
@@ -198,7 +198,7 @@ def test_cancel_and_reschedule_notify_staff(monkeypatch: pytest.MonkeyPatch) -> 
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "app.agent.tools._send_notification",
-        lambda recipient, message: sent.append((recipient, message)),
+        lambda recipient, message, **kwargs: sent.append((recipient, message)),
     )
     session, deps = make_deps("5216999999999")
     first = datetime.now() + timedelta(days=2)
@@ -235,7 +235,7 @@ def test_barber_can_cancel_own_assigned_appointment_without_three_hour_limit(
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "app.agent.tools._send_notification",
-        lambda recipient, message: sent.append((recipient, message)),
+        lambda recipient, message, **kwargs: sent.append((recipient, message)),
     )
     session, barber_deps = make_deps("5216111111111")
     when = datetime.now() + timedelta(hours=1)
@@ -265,7 +265,7 @@ def test_reschedule_can_change_barber_and_notifies_new_staff(
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "app.agent.tools._send_notification",
-        lambda recipient, message: sent.append((recipient, message)),
+        lambda recipient, message, **kwargs: sent.append((recipient, message)),
     )
     session, deps = make_deps("5216999999999")
     first = datetime.now() + timedelta(days=2)
