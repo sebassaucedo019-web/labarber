@@ -5,11 +5,23 @@ OUT_OF_SCOPE_REPLY = (
     "¿Quieres agendar una cita o saber precios?"
 )
 
+STAFF_HELP_REPLY = (
+    "Este número está registrado como parte del equipo de BARBER CG. "
+    "Puedo mostrarte la agenda, la siguiente cita o ayudarte a cancelar una cita."
+)
+STAFF_OUT_OF_SCOPE_REPLY = (
+    "Solo te ayudo con la operación de BARBER CG. "
+    "¿Necesitas la agenda, la siguiente cita o cancelar una cita?"
+)
+
 
 _BANNED_WORDS = (
     (re.compile(r"\b(pendej(?:o|a|os|as))\b", re.IGNORECASE), "amigo"),
     (re.compile(r"\b(cabr(?:ón|ona|ones|onas)|cabron(?:es|as)?)\b", re.IGNORECASE), "amigo"),
-    (re.compile(r"\b(idiota(?:s)?|est(?:ú|u)pido(?:s)?|imb(?:é|e)cil(?:es)?)\b", re.IGNORECASE), ""),
+    (
+        re.compile(r"\b(idiota(?:s)?|est(?:ú|u)pido(?:s)?|imb(?:é|e)cil(?:es)?)\b", re.IGNORECASE),
+        "",
+    ),
     (re.compile(r"\b(mam(?:ón|ona|ones|onas)|mamon(?:es|as)?)\b", re.IGNORECASE), ""),
     (re.compile(r"\b(pinche|pinches|culero|culera|culeros|culeras)\b", re.IGNORECASE), ""),
     (re.compile(r"\b(puto|puta|putos|putas)\b", re.IGNORECASE), ""),

@@ -58,6 +58,9 @@ def extract_text_messages(
                         "services": "Ver servicios",
                         "book": "Agendar cita",
                         "my_appointment": "Consultar mi cita",
+                        "staff_agenda": "Dame el enlace de la agenda",
+                        "staff_next": "Que cita sigue en la agenda",
+                        "staff_cancel": "Quiero cancelar una cita de la agenda",
                     }
                     text = intents.get(button_id, "") if isinstance(button_id, str) else ""
                     text = text or reply.get("title") or ""

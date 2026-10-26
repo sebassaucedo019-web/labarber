@@ -19,6 +19,7 @@ from pydantic_ai.usage import UsageLimits
 from redis.exceptions import WatchError
 from sqlalchemy.orm import Session
 
+from app.agenda import staff_scope
 from app.agent.agent import get_agent
 from app.agent.deps import BotDeps
 from app.agent.history import conversational_context, trim_history
@@ -28,8 +29,14 @@ from app.config import get_settings
 from app.identity import normalize_phone
 from app.observability import check_rate_limit, hash_wa_id
 from app.queue.debounce import schedule_processing
-from app.safety import OUT_OF_SCOPE_REPLY, contains_banned_language, sanitize_reply
-from app.sender import send_text, send_welcome_buttons
+from app.safety import (
+    OUT_OF_SCOPE_REPLY,
+    STAFF_HELP_REPLY,
+    STAFF_OUT_OF_SCOPE_REPLY,
+    contains_banned_language,
+    sanitize_reply,
+)
+from app.sender import send_text, send_welcome_buttons, welcome_menu_text
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import claim_batch, decode, get_redis, release_lock
 
@@ -212,13 +219,16 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         history_text = conversational_context(history)
         direct_reply = None
         intent = _run_async(asyncio.wait_for(classify_message(prompt, history_text), timeout=12))
+        is_staff = staff_scope(wa_id) is not None
         if intent == "off_topic":
-            direct_reply = OUT_OF_SCOPE_REPLY
+            direct_reply = STAFF_OUT_OF_SCOPE_REPLY if is_staff else OUT_OF_SCOPE_REPLY
         elif intent == "greeting":
             direct_reply = MENU_SENTINEL
         elif intent == "unclear":
             direct_reply = (
-                "¿Me aclaras qué necesitas de la barbería? Te ayudo con servicios y citas."
+                STAFF_HELP_REPLY
+                if is_staff
+                else ("¿Me aclaras qué necesitas de la barbería? Te ayudo con servicios y citas.")
             )
         if direct_reply:
             history.extend(
@@ -227,7 +237,7 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
                     ModelResponse(
                         parts=[
                             TextPart(
-                                "Bienvenido. Servicios, agendar o consultar mi cita."
+                                welcome_menu_text(wa_id)
                                 if direct_reply == MENU_SENTINEL
                                 else direct_reply
                             )
@@ -270,11 +280,7 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         if output_history and isinstance(output_history[-1], ModelResponse):
             for part in output_history[-1].parts:
                 if isinstance(part, TextPart):
-                    part.content = (
-                        "Bienvenido. Servicios, agendar o consultar mi cita."
-                        if reply == MENU_SENTINEL
-                        else reply
-                    )
+                    part.content = welcome_menu_text(wa_id) if reply == MENU_SENTINEL else reply
         _save_history_safely(session, wa_id, output_history)
         return reply
     except TimeoutError:

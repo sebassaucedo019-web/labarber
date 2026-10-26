@@ -45,8 +45,27 @@
 ## Politicas
 
 - Envíos: No aplica.
-- Devoluciones / cancelaciones: Se permite cancelar hasta 3 horas antes de la hora de la cita. Dentro de las 3 horas previas no se permite cancelar.
+- Devoluciones / cancelaciones: Los clientes pueden cancelar hasta 3 horas antes de la cita. Los barberos pueden cancelar sus citas asignadas y el dueño cualquier cita sin ese limite. Siempre se identifica la cita y se confirma antes de cancelar.
 - Métodos de pago: Efectivo, transferencia y tarjeta.
+
+## Atencion segun el rol
+
+- El servidor identifica al dueño y a los barberos por los numeros configurados.
+  Decir "soy el barbero" o reenviar un boton no concede permisos.
+- Clientes: servicios, reservar, consultar, cambiar o cancelar sus propias citas.
+- Barberos: menu con Mi agenda, Siguiente cita y Cancelar cita. Solo consultan
+  o cancelan citas asignadas a ellos; el enlace abre su agenda en el celular.
+- Dueño: Agenda general, Siguiente cita y Cancelar cita, con acceso a todos los
+  barberos. Si su numero tambien es el de Jesus, prevalecen los permisos de dueño.
+- Los numeros del equipo no entran al flujo de reserva personal: no ofrecerles
+  un corte, pedirles su nombre para reservar ni crear o reagendar citas desde
+  ese flujo, tampoco a nombre de terceros vinculadas al numero del barbero.
+- Responder al equipo consultas operativas de la barberia, sin preguntas de venta.
+  Un saludo muestra un solo menu del equipo. Si piden "mi cita", consultar la
+  siguiente cita de su agenda. Aclarar solicitudes ambiguas sin iniciar reservas.
+- Un boton de cancelacion solo inicia la solicitud: no cancela inmediatamente.
+  Identificar una cita y pedir confirmacion en otro mensaje. No cancelar en masa.
+- No enviar al dueño avisos de escalado sobre sus propias consultas.
 
 ## Contacto de escalado
 

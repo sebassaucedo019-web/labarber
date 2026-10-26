@@ -12,6 +12,7 @@ from app.agent.deps import BotDeps
 from app.config import get_settings
 from app.escalation import is_support_request, notify_human
 from app.identity import normalize_phone, phone_aliases
+from app.safety import STAFF_HELP_REPLY
 from app.store.models import Appointment
 
 SERVICES = {
@@ -209,6 +210,8 @@ def mostrar_menu_principal(ctx: RunContext[BotDeps]) -> str:
 
 def consultar_mi_cita(ctx: RunContext[BotDeps]) -> str:
     """Muestra al cliente sus próximas citas sin exponer la agenda de otros."""
+    if staff_scope(ctx.deps.wa_id) is not None:
+        return ver_siguiente_cita(ctx)
     rows = ctx.deps.db.scalars(
         select(Appointment)
         .where(
@@ -228,6 +231,8 @@ def agendar(
     ctx: RunContext[BotDeps], fecha_hora: str, servicio: str, nombre: str, barbero: str
 ) -> str:
     """Guarda una cita tras validar servicio, horario y disponibilidad."""
+    if staff_scope(ctx.deps.wa_id) is not None:
+        return STAFF_HELP_REPLY
     starts_at = _parse_datetime(fecha_hora)
     service = _service_key(servicio)
     barber = _barber_key(barbero)
@@ -394,6 +399,8 @@ def reagendar_cita(
     cita_id: int | None = None,
 ) -> str:
     """Mueve una cita propia, incluso a otro barbero, si el horario está libre."""
+    if staff_scope(ctx.deps.wa_id) is not None:
+        return STAFF_HELP_REPLY
     old = _parse_datetime(fecha_actual)
     new = _parse_datetime(fecha_nueva)
     if old is None or new is None:
@@ -509,6 +516,8 @@ def reagendar_cita(
 
 def escalar_humano(ctx: RunContext[BotDeps], motivo: str) -> str:
     """Deriva la conversación a una persona del equipo."""
+    if staff_scope(ctx.deps.wa_id) == "all":
+        return "Este número es del dueño. Puedes consultar la agenda general o cancelar citas."
     if not is_support_request(ctx.deps.user_message):
         return "No se envió aviso. Solo se escala una solicitud explícita de atención o un problema de la barbería."
     notified = notify_human(ctx.deps.wa_id, ctx.deps.user_message[:1000])
