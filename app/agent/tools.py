@@ -12,9 +12,9 @@ from app.agenda import agenda_link_message, staff_scope
 from app.agent.confirmation import confirm_action
 from app.agent.deps import BotDeps
 from app.config import get_settings
-from app.escalation import is_support_request, notify_human
+from app.escalation import notify_human
 from app.identity import normalize_phone, phone_aliases
-from app.safety import STAFF_HELP_REPLY
+from app.safety import OUT_OF_SCOPE_REPLY, STAFF_HELP_REPLY, STAFF_OUT_OF_SCOPE_REPLY
 from app.store.models import Appointment
 
 SERVICES = {
@@ -620,12 +620,68 @@ def reagendar_cita(
 
 
 def escalar_humano(ctx: RunContext[BotDeps], motivo: str) -> str:
-    """Deriva la conversación a una persona del equipo."""
+    """Solicita atención humana cuando no es una duda resoluble por el bot.
+
+    Una revisión independiente del mensaje y contexto valida la necesidad y el
+    destinatario. El motivo sugerido no autoriza avisos ni elige un teléfono.
+    """
+    if ctx.deps.support_reply is not None:
+        return ctx.deps.support_reply
     if staff_scope(ctx.deps.wa_id) == "all":
         return "Este número es del dueño. Puedes consultar la agenda general o cancelar citas."
-    if not is_support_request(ctx.deps.user_message):
-        return "No se envió aviso. Solo se escala una solicitud explícita de atención o un problema de la barbería."
-    notified = notify_human(ctx.deps.wa_id, ctx.deps.user_message[:1000])
-    if not notified:
-        return "No pude entregar el aviso al equipo. Intenta de nuevo en un momento."
-    return "Ya envié tu solicitud al equipo de la barbería."
+    decision = ctx.deps.support_decision
+    if not ctx.deps.support_reviewed or decision is None:
+        reply = "No pude evaluar tu solicitud de atención. Intenta de nuevo en un momento."
+    elif decision.category == "off_topic":
+        reply = STAFF_OUT_OF_SCOPE_REPLY if staff_scope(ctx.deps.wa_id) else OUT_OF_SCOPE_REPLY
+    elif decision.category == "self_service":
+        reply = "Puedo ayudarte aquí con servicios, precios y citas. ¿Qué necesitas revisar?"
+    elif decision.category == "clarify":
+        reply = "Cuéntame qué necesitas de la barbería para ver cómo ayudarte."
+    elif (
+        not decision.evidence.strip()
+        or decision.evidence.casefold() not in ctx.deps.user_message.casefold()
+    ):
+        reply = "¿Necesitas hablar con alguien de la barbería o que revisemos tu cita aquí?"
+    else:
+        target = decision.target
+        if target == "assigned":
+            barbers = ctx.deps.db.scalars(
+                select(Appointment.barber)
+                .where(
+                    Appointment.wa_id.in_(phone_aliases(ctx.deps.wa_id)),
+                    Appointment.status == "confirmed",
+                    Appointment.starts_at >= _now(),
+                )
+                .distinct()
+            ).all()
+            target = (
+                barbers[0]
+                if len(barbers) == 1 and barbers[0] in BARBERS.values()
+                else "unspecified"
+            )
+        if target == "unspecified":
+            reply = "¿Con quién quieres hablar: Obed, Jesús, Yadier o el dueño?"
+        else:
+            label = "el equipo de la barbería" if target == "owner" else target
+            try:
+                status = notify_human(ctx.deps.wa_id, ctx.deps.user_message[:1000], target=target)
+            except Exception:
+                logger.warning("falló el aviso de atención humana", exc_info=False)
+                status = "failed"
+            if status == "sent":
+                reply = f"Ya pasé tu solicitud a {label}. Podrán contactarte por este número."
+            elif status == "recent":
+                reply = f"Ya hay un aviso reciente para {label}; no hace falta repetirlo."
+            elif status == "pending":
+                reply = "El aviso todavía está en proceso; aún no puedo confirmar el envío."
+            elif status == "self":
+                reply = "Ese contacto corresponde a tu propio número de equipo. ¿Con quién más necesitas hablar?"
+            elif status == "unavailable":
+                reply = f"No tengo disponible el contacto de {label}. No se envió ningún aviso."
+                if target != "owner" and normalize_phone(get_settings().owner_wa_id):
+                    reply += " ¿Quieres que le avise al dueño?"
+            else:
+                reply = "No pude entregar el aviso. Puedes pedirme que lo intente de nuevo."
+    ctx.deps.support_reply = reply
+    return reply

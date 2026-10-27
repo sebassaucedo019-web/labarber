@@ -201,6 +201,14 @@ def _action_reply(deps: BotDeps) -> str | None:
     replies = list(deps.completed_actions)
     if deps.pending_action_reply:
         replies.append(deps.pending_action_reply)
+    if deps.support_reply and (
+        not replies
+        or (
+            deps.support_decision is not None
+            and deps.support_decision.category in {"human_request", "manual_issue"}
+        )
+    ):
+        replies.append(deps.support_reply)
     return sanitize_reply("\n".join(replies)) if replies else None
 
 
@@ -217,6 +225,7 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
         # thread to grow until every response becomes slow or hits model limits.
         history = trim_history(history, MAX_HISTORY_MESSAGES)
         history_text = conversational_context(history)
+        deps.support_context = history_text
         direct_reply = None
         intent = _run_async(asyncio.wait_for(classify_message(prompt, history_text), timeout=12))
         is_staff = staff_scope(wa_id) is not None
@@ -274,7 +283,12 @@ def _run_agent(session: Session, wa_id: str, prompt: str) -> str:
             )
         )
         reply = _action_reply(deps) or sanitize_reply(str(result.output))
-        if deps.menu_sent and not deps.completed_actions and not deps.pending_action_reply:
+        if (
+            deps.menu_sent
+            and not deps.completed_actions
+            and not deps.pending_action_reply
+            and not deps.support_reply
+        ):
             reply = MENU_SENTINEL
         output_history = result.all_messages()
         if output_history and isinstance(output_history[-1], ModelResponse):

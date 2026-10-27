@@ -205,8 +205,13 @@ def test_off_topic_escalation_cannot_be_authorized_by_model_reason(db, monkeypat
 
 
 def test_support_delivery_failure_is_not_reported_as_success(db, monkeypatch):
-    monkeypatch.setattr(tools, "notify_human", lambda *args: False)
-    result = tools.escalar_humano(
-        ctx(db, message="Quiero hablar con una persona"), "Solicitud de atención"
+    from app.agent.support import SupportDecision
+
+    monkeypatch.setattr(tools, "notify_human", lambda *args, **kwargs: "failed")
+    context = ctx(db, message="Quiero hablar con una persona")
+    context.deps.support_reviewed = True
+    context.deps.support_decision = SupportDecision(
+        category="human_request", target="owner", evidence="hablar con una persona"
     )
+    result = tools.escalar_humano(context, "Solicitud de atención")
     assert "No pude entregar" in result

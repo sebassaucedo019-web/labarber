@@ -1,6 +1,6 @@
 import logging
-import re
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import uuid4
 
 import httpx
@@ -9,23 +9,29 @@ from redis.exceptions import WatchError
 from app.config import get_settings
 from app.identity import normalize_phone
 from app.observability import hash_wa_id
-from app.scope import _normalize
 from app.store.redis_store import decode, get_redis
 
 logger = logging.getLogger(__name__)
 
-_REAL_ESCALATION_RE = re.compile(
-    r"\b(?:hablar con (?:una |un |el |la )?(?:persona|humano|alguien|dueno|encargado|jesus|obed|yadier)|"
-    r"(?:pasame|comunicame) con (?:el |la )?(?:dueno|encargado|jesus|obed|yadier)|"
-    r"persona del equipo|queja|reclamo|"
-    r"problema con (?:mi )?(?:cita|reserva|pago)|cobro incorrecto|"
-    r"(?:no funciona|error) (?:con|en) (?:la )?(?:cita|reserva|barberia|bot|pago))\b",
-    re.IGNORECASE,
-)
+NoticeStatus = Literal["sent", "recent", "pending", "failed", "unavailable", "self"]
 
 
-def is_support_request(text: str) -> bool:
-    return bool(_REAL_ESCALATION_RE.search(_normalize(text)))
+def _destination(target: str) -> str | None:
+    settings = get_settings()
+    return normalize_phone(
+        {
+            "owner": settings.owner_wa_id,
+            "Obed": settings.barber_obed_wa_id,
+            "Jesús": settings.barber_jesus_wa_id,
+            "Yadier": settings.barber_yadier_wa_id,
+        }.get(target)
+    )
+
+
+def _notice_key(wa_id: str, target: str = "owner") -> str:
+    destination = _destination(target)
+    recipient_key = hash_wa_id(destination) if destination else "owner-webhook"
+    return f"escalated:v2:{hash_wa_id(normalize_phone(wa_id) or wa_id)}:{recipient_key}"
 
 
 def _finish_notice(dedupe_key: str, token: str, notified: bool) -> None:
@@ -47,30 +53,37 @@ def _finish_notice(dedupe_key: str, token: str, notified: bool) -> None:
                 continue
 
 
-def notify_human(wa_id: str, motivo: str) -> bool:
-    """Avisa al dueño por WhatsApp y, opcionalmente, a un webhook externo."""
-    if not is_support_request(motivo):
-        logger.info("escalado omitido: no es una solicitud de soporte real")
-        return False
+def notify_human(wa_id: str, motivo: str, *, target: str = "owner") -> NoticeStatus:
+    """Transport for an already reviewed request; target is a configured staff identity."""
+    if target not in {"owner", "Obed", "Jesús", "Yadier"}:
+        return "unavailable"
     wa_id = normalize_phone(wa_id)
-    if wa_id is None:
-        return False
+    if wa_id is None or not motivo.strip():
+        return "failed"
     settings = get_settings()
+    recipient = _destination(target)
+    # A generic webhook is not proof that the named barber was notified.
+    webhook_url = settings.escalation_webhook_url if target == "owner" else None
+    if recipient == wa_id:
+        return "self"
+    if not recipient and not webhook_url:
+        return "unavailable"
     redis = get_redis()
-    dedupe_key = f"escalated:{hash_wa_id(wa_id)}"
+    dedupe_key = _notice_key(wa_id, target)
     token = f"pending:{uuid4().hex}"
     if not redis.set(dedupe_key, token, nx=True, ex=60):
-        return decode(redis.get(dedupe_key)) == "sent"
+        return "recent" if decode(redis.get(dedupe_key)) == "sent" else "pending"
     notified = False
     try:
-        if settings.owner_wa_id:
+        if recipient:
             from app.sender import send_text
 
             notified = send_text(
-                settings.owner_wa_id,
-                f"Escalado de BARBER CG 💈\nCliente: {wa_id}\nMotivo: {motivo}",
+                recipient,
+                f"Solicitud de atención en BARBER CG\nCliente: +{wa_id}\n"
+                f"Para: {'el equipo' if target == 'owner' else target}\n"
+                f"Mensaje del cliente: {motivo[:1000]}",
             )
-        webhook_url = settings.escalation_webhook_url
         if webhook_url:
             payload = _build_payload(wa_id, motivo, webhook_url)
             try:
@@ -83,7 +96,7 @@ def notify_human(wa_id: str, motivo: str) -> bool:
                 )
         elif not notified:
             logger.warning("escalado no entregado wa_id_hash=%s", hash_wa_id(wa_id))
-        return notified
+        return "sent" if notified else "failed"
     finally:
         try:
             _finish_notice(dedupe_key, token, notified)

@@ -12,6 +12,7 @@ from pydantic_ai.tools import ToolDefinition
 
 from app.agenda import staff_scope
 from app.agent.deps import BotDeps
+from app.agent.support import review_support
 from app.agent.tools import (
     agendar,
     agendar_para_cliente,
@@ -72,12 +73,20 @@ no escribas otra respuesta de texto. Si el saludo viene junto con una petición,
 atiende la petición y no muestres únicamente el menú.
 
 Si puedes resolver algo con una herramienta, úsala en vez de inventar la respuesta.
-Usa escalar_humano únicamente si el usuario pide explícitamente hablar con una persona,
-presenta una queja real, reporta un error/problema con una cita o pago, o necesita
-atención manual de la barbería. Nunca escales preguntas fuera de tema, clima, tareas,
-insultos aislados o preguntas que simplemente no conozcas. En esos casos usa la
-respuesta breve de fuera de alcance. Después de escalar, informa brevemente que ya
-avisaste al dueño y no sigas discutiendo el caso.
+Resuelve con tus herramientas las consultas normales, reservas, cambios y cancelaciones.
+La palabra problema o queja no basta para avisar a una persona: primero entiende
+qué necesita. Si faltan datos, pregunta; si desconoces un dato del negocio, dilo y
+ofrece ayuda humana, sin enviar un aviso por tu cuenta.
+Usa escalar_humano si pide explícitamente hablar con alguien de la barbería, pasarle
+un recado del negocio, o presenta un problema concreto que no puedes resolver:
+cobro duplicado, reembolso, queja por el corte o atención recibida. Respeta una
+petición explícita de una persona aunque conozcas la respuesta a su pregunta.
+Nunca escales temas ajenos, insultos aislados, horarios ocupados ni cancelaciones
+fuera de plazo por sí solos. Una revisión independiente comprueba la solicitud.
+La herramienta resuelve el destinatario: un barbero nombrado, el de su cita si
+no hay ambigüedad, o el dueño para atención general. Si pide aclaración, hazla.
+Usa el resultado real: no digas que avisaste si no se envió, no prometas un plazo
+de respuesta ni que transferiste el chat. Si ya hay un aviso reciente, no repitas.
 
 Consolida tu respuesta en un solo mensaje siempre que puedas. Usa expresiones
 naturales de México, por ejemplo: "con gusto", "te agendo", "¿qué día te late?"
@@ -163,6 +172,12 @@ async def _prepare_role_tool(
 def _transactional_tool(function):
     @wraps(function)
     async def run(*args, **kwargs):
+        if function is escalar_humano:
+            ctx = args[0] if args else kwargs["ctx"]
+            if ctx.deps.support_reply is not None:
+                return ctx.deps.support_reply
+            if staff_scope(ctx.deps.wa_id) != "all":
+                await review_support(ctx.deps)
         # Cancelling the model must not abandon a DB write in an executor thread
         # while the caller rolls back or closes that same SQLAlchemy session.
         task = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))

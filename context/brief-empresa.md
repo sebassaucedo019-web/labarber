@@ -79,7 +79,22 @@
 
 ## Contacto de escalado
 
-- Cómo deriva a un humano: Aviso por WhatsApp al dueño. El número del dueño se configurará como secreto en una variable de entorno.
+- Resolver primero las dudas normales y las operaciones que el bot puede gestionar.
+  Precios, horarios, disponibilidad, reservas, cambios y cancelaciones no generan
+  avisos por sí solos. Si falta un dato, preguntar antes de avisar.
+- Avisar cuando pidan explícitamente atención humana o exista un problema concreto
+  que el bot no resuelve, como cobro doble, reembolso o queja por un corte recibido.
+  Una revisión independiente del mensaje y contexto valida esta decisión.
+- Si piden hablar con Obed, Jesús o Yadier, avisar a esa persona. Si dicen "mi barbero",
+  consultar las citas confirmadas futuras del cliente. Si no hay un único barbero,
+  preguntar con quién quieren hablar. La atención general se avisa al dueño.
+- Los teléfonos se obtienen de las variables configuradas, nunca del motivo que
+  redacte el modelo. Si falta el contacto del barbero, decirlo y ofrecer avisar al
+  dueño; no redirigir automáticamente. El webhook opcional solo es atención general.
+- Distinguir aviso aceptado, pendiente, reciente o fallido. No afirmar que se envió
+  si falló; no prometer tiempo de respuesta ni transferencia del chat. Los avisos
+  repetidos al mismo destinatario se limitan durante cinco minutos. Esto no pausa
+  automáticamente el bot ni crea un chat en vivo con el barbero.
 
 ## WhatsApp
 
