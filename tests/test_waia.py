@@ -648,3 +648,80 @@ def test_rejected_booking_releases_calendar_transaction_before_model_response(db
             "Prueba",
         )
         session.commit()
+
+
+def preference_command(text, timestamp):
+    return payload(
+        {
+            "messages": [
+                {"type": "text", "from": CLIENT, "timestamp": timestamp, "text": {"body": text}}
+            ]
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "old,new,expected",
+    [
+        ("ALTA RECORDATORIOS", "BAJA", True),
+        ("BAJA", "ALTA RECORDATORIOS", False),
+    ],
+)
+def test_late_preference_retry_cannot_replace_newer_customer_choice(db, old, new, expected):
+    epoch = int(datetime.now(UTC).timestamp()) - 60
+    receipts.process_opt_out(preference_command(old, str(epoch)))
+    receipts.process_opt_out(preference_command(new, str(epoch + 1)))
+    receipts.process_opt_out(preference_command(old, str(epoch)))
+    with db() as session:
+        pref = session.get(MessagingPreference, CLIENT)
+        assert pref.opted_out is expected
+        assert pref.last_inbound_at == datetime.fromtimestamp(epoch + 1, UTC).replace(tzinfo=None)
+
+
+@pytest.mark.parametrize(
+    "commands",
+    [
+        ["ALTA RECORDATORIOS", "BAJA"],
+        ["BAJA", "ALTA RECORDATORIOS"],
+    ],
+)
+def test_same_second_preference_conflict_respects_withdrawal(db, commands):
+    timestamp = str(int(datetime.now(UTC).timestamp()))
+    for command in commands:
+        receipts.process_opt_out(preference_command(command, timestamp))
+    with db() as session:
+        assert session.get(MessagingPreference, CLIENT).opted_out
+
+
+def test_duplicate_resubscription_is_audited_only_once(db):
+    command = preference_command("ALTA RECORDATORIOS", str(int(datetime.now(UTC).timestamp())))
+    receipts.process_opt_out(command)
+    receipts.process_opt_out(command)
+    with db() as session:
+        assert session.scalar(select(func.count()).select_from(AppointmentEvent)) == 1
+
+
+@pytest.mark.parametrize("bad_time", [None, {}, "garbage", "99999999999999999999999"])
+def test_invalid_resubscription_cannot_undo_withdrawal(db, bad_time):
+    receipts.process_opt_out(preference_command("BAJA", None))
+    receipts.process_opt_out(preference_command("ALTA RECORDATORIOS", bad_time))
+    with db() as session:
+        assert session.get(MessagingPreference, CLIENT).opted_out
+
+
+def test_legacy_withdrawal_rejects_old_retry_but_accepts_recent_resubscription(db):
+    with db() as session:
+        session.add(MessagingPreference(wa_id=CLIENT, opted_out=True))
+        session.commit()
+    epoch = int(datetime.now(UTC).timestamp())
+    receipts.process_opt_out(preference_command("ALTA RECORDATORIOS", str(epoch - 3600)))
+    with db() as session:
+        assert session.get(MessagingPreference, CLIENT).opted_out
+    receipts.process_opt_out(preference_command("ALTA RECORDATORIOS", str(epoch)))
+    with db() as session:
+        assert not session.get(MessagingPreference, CLIENT).opted_out
+
+
+@pytest.mark.parametrize("state", [{}, [], None])
+def test_malformed_delivery_state_is_ignored_without_crashing(db, state):
+    receipts.process_receipts(payload({"statuses": [{"status": state, "id": "wamid.fake"}]}))

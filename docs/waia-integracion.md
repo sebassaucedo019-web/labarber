@@ -101,6 +101,12 @@ webhook firmado revocan el consentimiento y anulan los avisos pendientes.
 permisos de citas anteriores: deben registrarse de nuevo. El panel impide que el
 equipo pase por alto una baja aún activa.
 
+Los comandos se ordenan por su fecha de envío en WhatsApp, no por el orden de
+llegada al servidor. Los reintentos antiguos no reemplazan una decisión posterior;
+si un alta y una baja tienen el mismo segundo, prevalece la baja. Una solicitud
+de alta sin fecha válida nunca rehabilita permisos. Para bajas anteriores que no
+tenían fecha registrada se exige una solicitud de alta reciente.
+
 La política de [WhatsApp Business](https://whatsappbusiness.com/policy/) requiere
 permiso y plantillas aprobadas para iniciar conversaciones fuera de la ventana
 de atención. Estos nuevos avisos usan siempre plantillas, incluso dentro de ella;
@@ -190,6 +196,9 @@ caché; sin conexión informa que hay que conectarse y no permite cambios locale
 Android/iOS pueden ofrecer Agregar a inicio; la instalación en teléfonos reales
 se debe comprobar por separado. El panel refresca cada 15 s y al volver a la
 pestaña, sin interrumpir formularios que se estén escribiendo.
+Las peticiones tienen un límite de 15 s. Una respuesta atrasada no cambia el
+filtro actual. Si se pierde la conexión durante una escritura, se informa que el
+resultado es incierto y se pide actualizar, sin repetir automáticamente el cambio.
 
 Pruebas locales: `uv run pytest -q`, `uv run ruff check app tests --select F,E9,B,UP`
 y `node --check app/static/agenda/panel.js`. La suite bloquea HTTP/LLM reales y
@@ -197,3 +206,6 @@ usa SQLite, Redis simulado y números ficticios. Incluye concurrencia, reinicio,
 migración de datos anteriores, aislamiento de barberos, CSRF, caducidad/revocación,
 errores del proveedor, deduplicación y callbacks. La comprobación de PostgreSQL
 y de Meta en Railway es una etapa adicional; no equivale a los tests locales.
+Ejecutar también `node --test tests/panel_client.test.cjs`: prueba el controlador
+real del panel con DOM y red simulados, incluyendo timeouts, recargas concurrentes,
+cambios de filtro y cierre de sesión, sin instalar dependencias adicionales.

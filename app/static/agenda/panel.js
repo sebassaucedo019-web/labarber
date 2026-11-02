@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const escapeText = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const h = escapeText;
-let user = null, data = null, selected = '', mode = 'day', busy = false, loading = null, consentId = null, revision = 0;
+let user = null, data = null, selected = '', mode = 'day', busy = false, loading = null, refreshAgain = false, consentId = null, revision = 0;
 const dateOf = value => value.slice(0, 10);
 const dayObject = value => new Date(`${dateOf(value)}T12:00:00`);
 const dayName = value => dayObject(value).toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
@@ -11,21 +11,37 @@ const period = value => Number(value.slice(11,13)) < 12 ? 'a. m.' : 'p. m.';
 function say(message) { $('message').textContent = message; }
 function loginView() { revision++; user = null; data = null; selected=''; $('from').value=''; $('barber').replaceChildren(); $('block-barber').replaceChildren(); $('workspace').hidden = true; $('login-view').hidden = false; $('content').replaceChildren(); $('notice-list').replaceChildren(); }
 async function api(path, options = {}) {
-  const response = await fetch(`/api/agenda${path}`, {credentials:'same-origin', cache:'no-store', ...options,
-    headers:{'Content-Type':'application/json', ...(user ? {'X-CSRF-Token':user.csrf} : {}), ...options.headers}});
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401 && path !== '/login') loginView();
-    throw new Error(typeof body.detail === 'string' ? body.detail : 'No se pudo completar la solicitud.');
-  }
-  return body;
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(),15000);
+  try {
+    const response = await fetch(`/api/agenda${path}`, {credentials:'same-origin', cache:'no-store', ...options,
+      signal:controller.signal,
+      headers:{'Content-Type':'application/json', ...(user ? {'X-CSRF-Token':user.csrf} : {}), ...options.headers}});
+    let body;
+    try { body = await response.json(); }
+    catch(error) { if(response.ok||controller.signal.aborted) throw error; body={}; }
+    if (!response.ok) {
+      if (response.status === 401 && path !== '/login') loginView();
+      throw new Error(typeof body.detail === 'string' ? body.detail : 'No se pudo completar la solicitud.');
+    }
+    return body;
+  } catch(error) {
+    if(controller.signal.aborted || ['TypeError','SyntaxError'].includes(error.name)) {
+      const writing = options.method && options.method!=='GET';
+      throw new Error(writing
+        ? 'No pude confirmar si el cambio se guardó. Actualiza la agenda antes de intentarlo de nuevo.'
+        : 'No se pudo cargar la agenda. Revisa tu conexión y pulsa Actualizar.');
+    }
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 async function mutate(task) {
   if (busy) return;
   busy = true; say('');
   document.querySelectorAll('button').forEach(b => b.disabled = true);
-  try { await task(); await refresh(true); say('Cambio guardado.'); }
-  catch (error) { say(error.message); }
+  let saved=false;
+  try { await task(); saved=true; await refresh(true); say('Cambio guardado.'); }
+  catch (error) { say(saved ? 'El cambio se guardó, pero no se pudo actualizar la vista. Pulsa Actualizar.' : error.message); }
   finally { busy = false; document.querySelectorAll('button').forEach(b => b.disabled = false); }
 }
 function card(a, nextId) {
@@ -44,6 +60,7 @@ function card(a, nextId) {
   ${['confirmed','arrived','in_service'].includes(a.status)?`<div class="actions"><button class="minor" data-action="consent" data-id="${a.id}">${a.reminder_consent?'Revocar permiso de recordatorios':'Registrar permiso de recordatorios'}</button></div>`:''}</article>`;
 }
 function render() {
+  if(!data) return;
   $('business').textContent = data.business;
   $('scope-label').textContent = user.scope==='all'?'Vista general del equipo':`Tu agenda, ${user.scope}`;
   $('admin').hidden = user.scope !== 'all'; $('barber-filter').hidden = user.scope !== 'all';
@@ -75,26 +92,28 @@ async function loadNotices() {
 }
 async function refresh(force=false) {
   if (!user || (busy&&!force)) return;
-  if (loading) { await loading; return refresh(force); }
-  let release;
-  loading = new Promise(resolve=>{release=resolve;});
-  const currentRevision=revision;
-  try {
-    const query = new URLSearchParams(); if ($('from').value) query.set('start',$('from').value); if ($('barber').value) query.set('barber',$('barber').value);
-    const loaded = await api(`/calendar?${query}`);
-    if(!user||currentRevision!==revision) return;
-    data = loaded;
-    if (!$('from').value) $('from').value = data.start;
-    const current = $('barber').value;
-    $('barber').innerHTML = '<option value="">Todo el equipo</option>'+data.barbers.map(b=>`<option value="${h(b)}">${h(b)}</option>`).join('');
-    $('barber').value = current;
-    if (!$('block-barber').options.length) $('block-barber').innerHTML=data.barbers.map(b=>`<option value="${h(b)}">${h(b)}</option>`).join('');
-    render(); await loadNotices();
-  } finally { loading=null; release(); }
+  if (loading) { refreshAgain=true; return loading; }
+  loading = (async()=>{
+    do {
+      refreshAgain=false;
+      const currentRevision=revision, start=$('from').value, barber=$('barber').value;
+      const query = new URLSearchParams(); if(start) query.set('start',start); if(barber) query.set('barber',barber);
+      const loaded = await api(`/calendar?${query}`);
+      if(!user||currentRevision!==revision) return;
+      if(refreshAgain || start!==$('from').value || barber!==$('barber').value) { refreshAgain=true; continue; }
+      data = loaded;
+      if (!start) $('from').value = data.start;
+      $('barber').innerHTML = '<option value="">Todo el equipo</option>'+data.barbers.map(b=>`<option value="${h(b)}">${h(b)}</option>`).join('');
+      $('barber').value = barber;
+      if (!$('block-barber').options.length) $('block-barber').innerHTML=data.barbers.map(b=>`<option value="${h(b)}">${h(b)}</option>`).join('');
+      render(); await loadNotices();
+    } while(refreshAgain && user);
+  })();
+  try { await loading; } finally { loading=null; }
 }
 async function boot() {
   try { user = await api('/session'); $('login-view').hidden=true; $('workspace').hidden=false; await refresh(); }
-  catch(error) { if (user) say(error.message); }
+  catch(error) { say(error.message); }
 }
 $('login-form').addEventListener('submit', async e=>{
   e.preventDefault(); const form=e.currentTarget; const button=form.querySelector('button'); button.disabled=true; say('');

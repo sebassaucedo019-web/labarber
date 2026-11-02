@@ -11,6 +11,19 @@ from app.store.models import Appointment, MessagingPreference, NotificationOutbo
 from app.store.postgres import get_session
 
 
+def message_time(value):
+    """Provider timestamps are UTC seconds; do not trust malformed/future values."""
+    if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
+        return None
+    try:
+        timestamp = datetime.fromtimestamp(int(value), UTC).replace(tzinfo=None)
+    except (ValueError, OverflowError, OSError):
+        return None
+    if timestamp > datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5):
+        return None
+    return timestamp
+
+
 def values(payload):
     entries = payload.get("entry", [])
     for entry in entries if isinstance(entries, list) else []:
@@ -34,8 +47,10 @@ def process_receipts(payload):
             if not isinstance(receipt, dict):
                 continue
             state, message_id = receipt.get("status"), receipt.get("id")
-            if state not in {"sent", "delivered", "read", "failed"} or not isinstance(
-                message_id, str
+            if (
+                not isinstance(state, str)
+                or state not in {"sent", "delivered", "read", "failed"}
+                or not isinstance(message_id, str)
             ):
                 continue
             callback = receipt.get("biz_opaque_callback_data", "")
@@ -43,10 +58,8 @@ def process_receipts(payload):
                 prefix, identity, event_id = callback.split(":")
                 if prefix != "waia" or not identity.isdigit() or len(event_id) != 32:
                     continue
-                timestamp = datetime.fromtimestamp(int(receipt["timestamp"]), UTC).replace(
-                    tzinfo=None
-                )
-                if timestamp > datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5):
+                timestamp = message_time(receipt.get("timestamp"))
+                if timestamp is None:
                     continue
             except (AttributeError, KeyError, ValueError, TypeError, OverflowError, OSError):
                 continue
@@ -118,13 +131,39 @@ def process_opt_out(payload):
             phone = normalize_phone(message.get("from"))
             if not phone:
                 continue
+            opted_out = body.strip().casefold() != "alta recordatorios"
+            now = datetime.now(UTC).replace(tzinfo=None)
+            timestamp = message_time(message.get("timestamp"))
+            if timestamp is None:
+                # A malformed command must never restore permission. Honor a
+                # withdrawal conservatively even if its timestamp is missing.
+                if not opted_out:
+                    continue
+                timestamp = now
             with get_session() as session:
                 calendar_lock(session)
                 pref = session.get(MessagingPreference, phone)
+                if pref is not None:
+                    previous = pref.last_inbound_at
+                    if previous and (
+                        timestamp < previous
+                        or (timestamp == previous and (pref.opted_out or not opted_out))
+                    ):
+                        continue
+                    # Legacy withdrawals have no ordering information. Require
+                    # a recent resubscription, rather than accepting an old retry.
+                    if (
+                        previous is None
+                        and pref.opted_out
+                        and not opted_out
+                        and timestamp < now - timedelta(minutes=5)
+                    ):
+                        continue
                 if pref is None:
                     pref = MessagingPreference(wa_id=phone)
                     session.add(pref)
-                pref.opted_out = body.strip().casefold() != "alta recordatorios"
+                # Same-second conflicting commands always resolve to withdrawal.
+                pref.opted_out, pref.last_inbound_at = opted_out, timestamp
                 if not pref.opted_out:
                     audit(
                         session,

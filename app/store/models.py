@@ -150,5 +150,6 @@ class StaffSession(Base):
 class MessagingPreference(Base):
     __tablename__ = "messaging_preferences"
     wa_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # UTC timestamp of the last applied reminder preference command.
     last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime)
     opted_out: Mapped[bool] = mapped_column(default=False)
