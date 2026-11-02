@@ -318,5 +318,5 @@ def test_booking_rejects_closing_time_and_invalid_minutes() -> None:
     at_closing = agendar(as_ctx(deps), f"{tomorrow} 20:00", "corte normal", "Ana", "Obed")
     invalid_minutes = agendar(as_ctx(deps), f"{tomorrow} 10:15", "corte normal", "Ana", "Obed")
 
-    assert "09:00 a 20:00" in at_closing
-    assert "09:00 a 20:00" in invalid_minutes
+    assert "fuera de la jornada" in at_closing
+    assert "intervalos de 30 minutos" in invalid_minutes

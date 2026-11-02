@@ -36,12 +36,35 @@ def init_db() -> None:
         columns = {column["name"] for column in inspect(connection).get_columns("appointments")}
         if "barber" not in columns:
             connection.execute(text("ALTER TABLE appointments ADD COLUMN barber VARCHAR(80)"))
+        additions = {
+            "appointments": {
+                "arrived_at": "TIMESTAMP",
+                "started_at": "TIMESTAMP",
+                "completed_at": "TIMESTAMP",
+                "schedule_updated_at": "TIMESTAMP",
+                "reminder_consent": "BOOLEAN NOT NULL DEFAULT false",
+                "consent_source": "VARCHAR(300)",
+            },
+            "notification_outbox": {
+                "kind": "VARCHAR(24) NOT NULL DEFAULT 'appointment'",
+                "scheduled_start": "TIMESTAMP",
+                "scheduled_barber": "VARCHAR(80)",
+                "provider_message_id": "VARCHAR(256)",
+                "delivered_at": "TIMESTAMP",
+                "read_at": "TIMESTAMP",
+            },
+        }
+        for table, fields in additions.items():
+            existing = {col["name"] for col in inspect(connection).get_columns(table)}
+            for name, definition in fields.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
         # Existing databases also need the uniqueness guard. Fail startup if
         # conflicting data prevents it; never silently book without protection.
         next(
             index
             for index in Appointment.__table__.indexes
-            if index.name == "uq_confirmed_barber_slot"
+            if index.name == "uq_reserved_barber_slot"
         ).create(
             bind=connection,
             checkfirst=True,

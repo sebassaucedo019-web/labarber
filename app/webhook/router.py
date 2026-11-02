@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.queue.tasks import buffer_inbound
 from app.webhook.normalize import extract_text_messages
 from app.webhook.signature import is_valid_signature
+from app.webhook.receipts import process_receipts, process_opt_out
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -54,6 +55,8 @@ async def receive(request: Request) -> Response:
         return Response(status_code=400)
     if not isinstance(payload, dict):
         return Response(status_code=400)
+    await run_in_threadpool(process_receipts, payload)
+    await run_in_threadpool(process_opt_out, payload)
     for message in extract_text_messages(
         payload, phone_number_id=settings.whatsapp_phone_number_id
     ):

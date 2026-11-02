@@ -21,8 +21,10 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.identity import normalize_phone
+from app.scheduling import ACTIVE, LABELS
 from app.store.models import Appointment
 from app.store.postgres import get_session
+from app.staff import names as barber_names, scope as configured_scope
 
 router = APIRouter()
 BUSINESS_TZ = ZoneInfo("America/Chihuahua")
@@ -32,20 +34,7 @@ DEFAULT_PUBLIC_BASE_URL = "https://labarber-production-b9de.up.railway.app"
 
 def staff_scope(wa_id: str) -> str | None:
     """Return all or the barber name that this staff number may see."""
-    settings = get_settings()
-    caller = normalize_phone(wa_id)
-    if not caller:
-        return None
-    if normalize_phone(settings.owner_wa_id) == caller:
-        return "all"
-    for name, configured in (
-        ("Obed", settings.barber_obed_wa_id),
-        ("Jesús", settings.barber_jesus_wa_id),
-        ("Yadier", settings.barber_yadier_wa_id),
-    ):
-        if normalize_phone(configured) == caller:
-            return name
-    return None
+    return configured_scope(wa_id)
 
 
 def _encode(value: bytes) -> str:
@@ -126,7 +115,7 @@ def _verify_token(token: str) -> str | None:
         subject = data.get("sub")
         if not isinstance(subject, str) or scope != staff_scope(subject):
             return None
-        return scope if scope in {"all", "Obed", "Jesús", "Yadier"} else None
+        return scope if scope in {"all", *barber_names()} else None
     except (binascii.Error, KeyError, TypeError, ValueError, UnicodeDecodeError):
         return None
 
@@ -165,7 +154,7 @@ def _icon(name: str) -> str:
 
 
 def _format_row(appointment: Appointment, *, is_next: bool = False) -> str:
-    labels = {"confirmed": "Confirmada", "completed": "Completada", "cancelled": "Cancelada"}
+    labels = {**LABELS, "completed": "Completada"}
     status = appointment.status if appointment.status in labels else "confirmed"
     barber_class = {"Obed": "obed", "Jesús": "jesus", "Yadier": "yadier"}.get(
         appointment.barber,
@@ -300,7 +289,7 @@ def agenda_page(token: str = Query(default="")) -> HTMLResponse:
         Appointment.starts_at >= now,
         Appointment.starts_at
         < datetime.combine(now.date() + timedelta(days=7), datetime.min.time()),
-        Appointment.status == "confirmed",
+        Appointment.status.in_(ACTIVE),
     ]
     if scope != "all":
         conditions.append(Appointment.barber == scope)

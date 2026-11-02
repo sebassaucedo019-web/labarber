@@ -438,8 +438,8 @@ def test_owner_also_jesus_must_choose_barber_and_receives_one_reply(staff, db, m
         ({"servicio": "tinte gratis"}, "servicio no existe"),
         ({"fecha_hora": "ayer"}, "fecha y hora"),
         ({"fecha_hora": "2000-01-02 12:00"}, "ya pasó"),
-        ({"fecha_hora": "2090-01-02 20:00"}, "09:00 a 20:00"),
-        ({"fecha_hora": "2090-01-02 12:15"}, "09:00 a 20:00"),
+        ({"fecha_hora": "2090-01-02 20:00"}, "fuera de la jornada"),
+        ({"fecha_hora": "2090-01-02 12:15"}, "intervalos de 30 minutos"),
     ],
 )
 def test_staff_booking_rejects_bad_data_or_outside_scope(staff, db, changes, expected):

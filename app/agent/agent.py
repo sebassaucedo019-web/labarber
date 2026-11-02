@@ -142,10 +142,17 @@ BRIEF_PATH = Path(__file__).resolve().parents[2] / "context" / "brief-empresa.md
 def _build_system_prompt() -> str:
     """Si existe context/brief-empresa.md lo suma al prompt base — ver AGENTS.md."""
     current_date = datetime.now(ZoneInfo("America/Chihuahua")).strftime("%Y-%m-%d %H:%M")
+    from app.staff import names
+
     date_context = (
         f"\n\nFecha y hora actual en Chihuahua: {current_date}. "
         "Interpreta hoy, mañana y pasado mañana usando esta fecha. "
         "Para las herramientas usa fechas como AAAA-MM-DD y horas de 24 horas."
+    )
+    date_context += (
+        "\nDirectorio vigente de barberos (prevalece sobre ejemplos): "
+        + ", ".join(names())
+        + ". Consulta disponibilidad; cada barbero puede tener horarios distintos."
     )
     if not BRIEF_PATH.exists():
         return BASE_SYSTEM_PROMPT + date_context

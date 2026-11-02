@@ -16,6 +16,16 @@ from app.escalation import notify_human
 from app.identity import normalize_phone, phone_aliases
 from app.safety import OUT_OF_SCOPE_REPLY, STAFF_HELP_REPLY, STAFF_OUT_OF_SCOPE_REPLY
 from app.store.models import Appointment
+from app import staff
+from app.scheduling import (
+    ACTIVE,
+    available,
+    available_times,
+    calendar_lock,
+    close_calendar_transaction,
+    invalidate_notices,
+    audit,
+)
 
 SERVICES = {
     "corte normal": 120,
@@ -24,7 +34,6 @@ SERVICES = {
     "barba y corte": 200,
     "servicio completo": 300,
 }
-BARBERS = {"obed": "Obed", "jesus": "Jesús", "yadier": "Yadier"}
 MENU_SENTINEL = "__BARBER_CG_MENU_SENT__"
 OPEN_HOUR = 9
 CLOSE_HOUR = 20
@@ -54,8 +63,7 @@ def _service_key(service: str) -> str | None:
 
 
 def _barber_key(barber: str) -> str | None:
-    normalized = " ".join(barber.lower().strip().split()).replace("ú", "u")
-    return BARBERS.get(normalized)
+    return staff.key(barber)
 
 
 def _valid_slot(starts_at: datetime) -> bool:
@@ -77,37 +85,15 @@ def consultar_disponibilidad(ctx: RunContext[BotDeps], fecha: str, barbero: str)
         return "Esa fecha ya pasó. Dime otra fecha y reviso los horarios."
     barber = _barber_key(barbero)
     if barber is None:
-        return "Elige uno de estos barberos: Obed, Jesús o Yadier."
-    start = datetime.combine(day, datetime.min.time()).replace(hour=OPEN_HOUR)
-    rows = ctx.deps.db.scalars(
-        select(Appointment)
-        .where(
-            Appointment.starts_at >= start,
-            Appointment.starts_at < start.replace(hour=CLOSE_HOUR),
-            Appointment.barber == barber,
-            Appointment.status == "confirmed",
-        )
-        .order_by(Appointment.starts_at)
-    ).all()
-    occupied = {row.starts_at.strftime("%H:%M") for row in rows}
-    now = _now()
-    available = [
-        candidate.strftime("%H:%M")
-        for i in range(22)
-        for candidate in (start + timedelta(minutes=30 * i),)
-        if candidate.strftime("%H:%M") not in occupied and (day != now.date() or candidate > now)
-    ]
-    return f"Horarios disponibles para {fecha}: {', '.join(available) or 'no hay espacios'}."
+        return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
+    free_times = [at.strftime("%H:%M") for at in available_times(ctx.deps.db, barber, day, _now())]
+    return f"Horarios disponibles para {fecha}: {', '.join(free_times) or 'no hay espacios'}."
 
 
 def _staff_recipient(barber: str) -> str | None:
-    settings = get_settings()
-    configured = {
-        "Obed": settings.barber_obed_wa_id,
-        "Jesús": settings.barber_jesus_wa_id,
-        "Yadier": settings.barber_yadier_wa_id,
-    }.get(barber)
-    return configured if normalize_phone(configured) else None
+    return next(
+        (b.phone for b in staff.roster() if b.name == barber and normalize_phone(b.phone)), None
+    )
 
 
 def _staff_recipients(appointment: Appointment) -> list[str]:
@@ -193,7 +179,7 @@ def ver_siguiente_cita(ctx: RunContext[BotDeps]) -> str:
     is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
     if not is_admin and barber_filter is None:
         return "Esta consulta está disponible únicamente para el dueño o los barberos de BARBER CG."
-    conditions = [Appointment.starts_at >= _now(), Appointment.status == "confirmed"]
+    conditions = [Appointment.starts_at >= _now(), Appointment.status.in_(ACTIVE)]
     if barber_filter:
         conditions.append(Appointment.barber == barber_filter)
     appointment = ctx.deps.db.scalar(
@@ -209,7 +195,7 @@ def ver_agenda(ctx: RunContext[BotDeps]) -> str:
     is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
     if not is_admin and barber_filter is None:
         return "Esta consulta está disponible únicamente para el dueño o los barberos de BARBER CG."
-    conditions = [Appointment.starts_at >= _now(), Appointment.status == "confirmed"]
+    conditions = [Appointment.starts_at >= _now(), Appointment.status.in_(ACTIVE)]
     if barber_filter:
         conditions.append(Appointment.barber == barber_filter)
     rows = ctx.deps.db.scalars(
@@ -241,7 +227,7 @@ def consultar_mi_cita(ctx: RunContext[BotDeps]) -> str:
         .where(
             Appointment.wa_id.in_(phone_aliases(ctx.deps.wa_id)),
             Appointment.starts_at >= _now(),
-            Appointment.status == "confirmed",
+            Appointment.status.in_(ACTIVE),
         )
         .order_by(Appointment.starts_at)
         .limit(5)
@@ -278,7 +264,7 @@ def agendar_para_cliente(
         return "Solo el equipo autorizado puede registrar citas para clientes desde este flujo."
     target = _barber_key(barbero) if barbero is not None else scope if scope != "all" else None
     if target is None:
-        return "Elige el barbero de la cita: Obed, Jesús o Yadier."
+        return "Elige el barbero de la cita: " + ", ".join(staff.names()) + "."
     if scope != "all" and target != scope:
         return f"Solo puedes registrar citas en tu propia agenda ({scope})."
     # Bare numbers are Mexican; international numbers must include an explicit +.
@@ -298,6 +284,7 @@ def agendar_para_cliente(
     )
 
 
+@close_calendar_transaction
 def _book_appointment(
     ctx: RunContext[BotDeps],
     fecha_hora: str,
@@ -319,9 +306,9 @@ def _book_appointment(
             "barba y corte o servicio completo."
         )
     if barber is None:
-        return "Elige uno de estos barberos: Obed, Jesús o Yadier."
-    if not _valid_slot(starts_at):
-        return "Atendemos de 09:00 a 20:00; elige una hora en punto o a los 30 minutos."
+        return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
+    if not staff.working_slot(barber, starts_at):
+        return "Ese horario está fuera de la jornada del barbero; consulta disponibilidad en intervalos de 30 minutos."
     if not nombre.strip():
         return (
             "Necesito el nombre del cliente para registrar la cita."
@@ -330,11 +317,12 @@ def _book_appointment(
         )
     if starts_at <= _now():
         return "Esa fecha y hora ya pasó."
+    calendar_lock(ctx.deps.db)
     conflict = ctx.deps.db.scalar(
         select(Appointment).where(
             Appointment.starts_at == starts_at,
             Appointment.barber == barber,
-            Appointment.status == "confirmed",
+            Appointment.status != "cancelled",
         )
     )
     if conflict:
@@ -345,6 +333,8 @@ def _book_appointment(
         ):
             return f"La cita ya estaba confirmada: {_format_appointment(conflict)}."
         return "Ese horario ya está ocupado. Consulta disponibilidad para elegir otro."
+    if not available(ctx.deps.db, barber, starts_at):
+        return "Ese horario está bloqueado o fuera del horario de ese barbero."
     if not confirm_action(
         ctx.deps,
         "staff_book" if staff_booking else "book",
@@ -366,10 +356,12 @@ def _book_appointment(
         service=service,
         barber=barber,
         starts_at=starts_at,
+        schedule_updated_at=_now(),
     )
     try:
         ctx.deps.db.add(appointment)
         ctx.deps.db.flush()
+        audit(ctx.deps.db, appointment.id, ctx.deps.wa_id, "book")
         event_id = uuid4().hex
         _notify_staff_of_appointment(
             appointment,
@@ -403,6 +395,7 @@ def _book_appointment(
     return confirmation
 
 
+@close_calendar_transaction
 def cancelar_cita(
     ctx: RunContext[BotDeps],
     fecha_hora: str,
@@ -413,10 +406,13 @@ def cancelar_cita(
     starts_at = _parse_datetime(fecha_hora)
     if starts_at is None:
         return "Necesito fecha y hora como AAAA-MM-DD HH:MM."
+    calendar_lock(ctx.deps.db)
     is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
     conditions = [
         Appointment.starts_at == starts_at,
-        Appointment.status == "confirmed",
+        Appointment.status.in_(("confirmed", "arrived"))
+        if (is_admin or barber_filter)
+        else Appointment.status == "confirmed",
     ]
     if is_admin:
         pass
@@ -455,6 +451,8 @@ def cancelar_cita(
     ):
         return ctx.deps.pending_action_reply
     appointment.status = "cancelled"
+    invalidate_notices(ctx.deps.db, appointment.id)
+    audit(ctx.deps.db, appointment.id, ctx.deps.wa_id, "cancel")
     event_id = uuid4().hex
     try:
         _notify_staff(
@@ -491,6 +489,7 @@ def _ambiguous_appointments(appointments: list[Appointment]) -> str:
     return "Hay varias citas en ese horario. Confirma cuál quieres modificar:\n" + options
 
 
+@close_calendar_transaction
 def reagendar_cita(
     ctx: RunContext[BotDeps],
     fecha_actual: str,
@@ -506,6 +505,7 @@ def reagendar_cita(
     new = _parse_datetime(fecha_nueva)
     if old is None or new is None:
         return "Necesito ambas fechas como AAAA-MM-DD HH:MM."
+    calendar_lock(ctx.deps.db)
     conditions = [
         Appointment.wa_id.in_(phone_aliases(ctx.deps.wa_id)),
         Appointment.starts_at == old,
@@ -532,11 +532,11 @@ def reagendar_cita(
     if nuevo_barbero:
         target_barber = _barber_key(nuevo_barbero)
         if target_barber is None:
-            return "Elige uno de estos barberos: Obed, Jesús o Yadier."
-    if not _valid_slot(new) or new <= _now():
-        return "El nuevo horario debe estar entre 09:00 y 19:30 y ser futuro."
+            return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
+    if not target_barber or not staff.working_slot(target_barber, new) or new <= _now():
+        return "El nuevo horario debe ser futuro y estar dentro de la jornada del barbero, en intervalos de 30 minutos."
     if target_barber is None:
-        return "Elige uno de estos barberos: Obed, Jesús o Yadier."
+        return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
     if new == old and target_barber == appointment.barber:
         return f"La cita ya tiene ese horario y barbero: {_format_appointment(appointment)}."
     if ctx.deps.db.scalar(
@@ -544,10 +544,12 @@ def reagendar_cita(
             Appointment.id != appointment.id,
             Appointment.starts_at == new,
             Appointment.barber == target_barber,
-            Appointment.status == "confirmed",
+            Appointment.status != "cancelled",
         )
     ):
         return "El nuevo horario ya está ocupado."
+    if not available(ctx.deps.db, target_barber, new, appointment.id):
+        return "El nuevo horario está bloqueado o fuera del horario del barbero."
     if not confirm_action(
         ctx.deps,
         "reschedule",
@@ -566,6 +568,9 @@ def reagendar_cita(
     old_barber = appointment.barber
     appointment.starts_at = new
     appointment.barber = target_barber
+    appointment.schedule_updated_at = _now()
+    invalidate_notices(ctx.deps.db, appointment.id)
+    audit(ctx.deps.db, appointment.id, ctx.deps.wa_id, "reschedule", f"{old} -> {new}")
     if old_starts_at == new and old_barber != target_barber:
         staff_message = (
             "Cambio de barbero en BARBER CG 💈\n"
@@ -656,12 +661,10 @@ def escalar_humano(ctx: RunContext[BotDeps], motivo: str) -> str:
                 .distinct()
             ).all()
             target = (
-                barbers[0]
-                if len(barbers) == 1 and barbers[0] in BARBERS.values()
-                else "unspecified"
+                barbers[0] if len(barbers) == 1 and barbers[0] in staff.names() else "unspecified"
             )
         if target == "unspecified":
-            reply = "¿Con quién quieres hablar: Obed, Jesús, Yadier o el dueño?"
+            reply = "¿Con quién quieres hablar: " + ", ".join(staff.names()) + " o el dueño?"
         else:
             label = "el equipo de la barbería" if target == "owner" else target
             try:

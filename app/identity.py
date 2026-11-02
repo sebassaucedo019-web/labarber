@@ -2,7 +2,11 @@
 
 
 def normalize_phone(value: str | None) -> str | None:
-    if not value or any(char not in "+0123456789 ()-." for char in value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or any(char not in "+0123456789 ()-." for char in value)
+    ):
         return None
     digits = "".join(char for char in value if char in "0123456789")
     if len(digits) == 10:

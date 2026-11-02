@@ -6,17 +6,26 @@ import logging
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
+
+from app.staff import names
 
 logger = logging.getLogger(__name__)
 
 
 class SupportDecision(BaseModel):
     category: Literal["self_service", "human_request", "manual_issue", "clarify", "off_topic"]
-    target: Literal["owner", "Obed", "Jesús", "Yadier", "assigned", "unspecified"]
+    target: str = Field(max_length=80)
     evidence: str = Field(max_length=1000)
+
+    @field_validator("target")
+    @classmethod
+    def configured_target(cls, value):
+        if value not in {"owner", "assigned", "unspecified", *names()}:
+            raise ValueError("Destinatario no configurado")
+        return value
 
 
 SUPPORT_POLICY = """
@@ -64,7 +73,9 @@ def get_support_reviewer() -> Agent[None, SupportDecision]:
     return Agent(
         get_agent().model,
         output_type=SupportDecision,
-        instructions=SUPPORT_POLICY,
+        instructions=lambda: (
+            SUPPORT_POLICY + "\nBarberos configurados actualmente: " + ", ".join(names())
+        ),
         model_settings={"timeout": 6},
     )
 

@@ -7,10 +7,11 @@ from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 from uuid import uuid4
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import exists, select, update, or_
 from sqlalchemy.orm import Session, aliased
 
 from app.identity import normalize_phone
+from app.config import get_settings
 from app.observability import hash_wa_id
 from app.sender import send_text
 from app.store.models import NotificationOutbox
@@ -66,11 +67,13 @@ class Delivery:
     message: str
     attempts: int
     token: str
+    kind: str = "appointment"
 
 
 def _ready(now: datetime):
     older = aliased(NotificationOutbox)
     return (
+        or_(NotificationOutbox.kind == "appointment", get_settings().automatic_notices_enabled),
         NotificationOutbox.status.in_(ACTIVE_STATUSES),
         NotificationOutbox.available_at <= now,
         ~exists().where(
@@ -78,6 +81,7 @@ def _ready(now: datetime):
             older.recipient == NotificationOutbox.recipient,
             older.id < NotificationOutbox.id,
             older.status.in_(ACTIVE_STATUSES),
+            or_(older.kind == "appointment", NotificationOutbox.kind != "appointment"),
         ),
     )
 
@@ -85,6 +89,16 @@ def _ready(now: datetime):
 def claim_notification() -> Delivery | None:
     now = _now()
     with get_session() as session:
+        # Never blindly repeat an automated reminder with an unknown network result.
+        session.execute(
+            update(NotificationOutbox)
+            .where(
+                NotificationOutbox.kind != "appointment",
+                NotificationOutbox.status == "sending",
+                NotificationOutbox.available_at <= now,
+            )
+            .values(status="uncertain", lease_token=None, last_error="interrupted_submission")
+        )
         exhausted = (
             session.execute(
                 update(NotificationOutbox)
@@ -129,12 +143,13 @@ def claim_notification() -> Delivery | None:
                     NotificationOutbox.recipient,
                     NotificationOutbox.message,
                     NotificationOutbox.attempts,
+                    NotificationOutbox.kind,
                 )
                 .execution_options(synchronize_session=False)
             ).first()
             session.commit()
             if row is not None:
-                return Delivery(row.id, row.recipient, row.message, row.attempts, token)
+                return Delivery(row.id, row.recipient, row.message, row.attempts, token, row.kind)
     return None
 
 
@@ -177,6 +192,12 @@ def dispatch_pending(stop: Event | None = None, limit: int = 20) -> int:
         delivery = claim_notification()
         if delivery is None:
             break
+        if delivery.kind != "appointment":
+            from app.reminders import dispatch_automatic
+
+            dispatch_automatic(delivery)
+            processed += 1
+            continue
         try:
             accepted = send_text(delivery.recipient, delivery.message)
             error = None if accepted else "delivery_rejected"
@@ -194,6 +215,12 @@ def dispatch_pending(stop: Event | None = None, limit: int = 20) -> int:
 
 def _dispatch_loop(stop: Event) -> None:
     while not stop.is_set():
+        try:
+            from app.reminders import reconcile_reminders
+
+            reconcile_reminders()
+        except Exception:
+            logger.exception("recordatorios no disponibles; se reintentara")
         try:
             if dispatch_pending(stop) == 20:
                 continue

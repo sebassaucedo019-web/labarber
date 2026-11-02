@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.identity import normalize_phone
 from app.observability import hash_wa_id
 from app.store.redis_store import decode, get_redis
+from app.staff import names, recipient
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +19,7 @@ NoticeStatus = Literal["sent", "recent", "pending", "failed", "unavailable", "se
 
 def _destination(target: str) -> str | None:
     settings = get_settings()
-    return normalize_phone(
-        {
-            "owner": settings.owner_wa_id,
-            "Obed": settings.barber_obed_wa_id,
-            "Jesús": settings.barber_jesus_wa_id,
-            "Yadier": settings.barber_yadier_wa_id,
-        }.get(target)
-    )
+    return normalize_phone(settings.owner_wa_id) if target == "owner" else recipient(target)
 
 
 def _notice_key(wa_id: str, target: str = "owner") -> str:
@@ -55,7 +49,7 @@ def _finish_notice(dedupe_key: str, token: str, notified: bool) -> None:
 
 def notify_human(wa_id: str, motivo: str, *, target: str = "owner") -> NoticeStatus:
     """Transport for an already reviewed request; target is a configured staff identity."""
-    if target not in {"owner", "Obed", "Jesús", "Yadier"}:
+    if target not in {"owner", *names()}:
         return "unavailable"
     wa_id = normalize_phone(wa_id)
     if wa_id is None or not motivo.strip():

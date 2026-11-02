@@ -57,16 +57,22 @@ class Appointment(Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     status: Mapped[str] = mapped_column(String(16), default="confirmed", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    arrived_at: Mapped[datetime | None] = mapped_column(DateTime)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reminder_consent: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    consent_source: Mapped[str | None] = mapped_column(String(300))
+    schedule_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     __table_args__ = (
         # Prevent two workers from confirming the same barber and time under load.
         Index(
-            "uq_confirmed_barber_slot",
+            "uq_reserved_barber_slot",
             "starts_at",
             "barber",
             unique=True,
-            postgresql_where=text("status = 'confirmed'"),
-            sqlite_where=text("status = 'confirmed'"),
+            postgresql_where=text("status != 'cancelled'"),
+            sqlite_where=text("status != 'cancelled'"),
         ),
     )
 
@@ -88,9 +94,61 @@ class NotificationOutbox(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_error: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    kind: Mapped[str] = mapped_column(
+        String(24), default="appointment", server_default="appointment"
+    )
+    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime)
+    scheduled_barber: Mapped[str | None] = mapped_column(String(80))
+    provider_message_id: Mapped[str | None] = mapped_column(String(256))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     __table_args__ = (
         UniqueConstraint("event_id", "recipient", name="uq_notification_event_recipient"),
         Index("ix_notification_ready", "status", "available_at"),
         Index("ix_notification_order", "appointment_id", "recipient", "id"),
     )
+
+
+class AppointmentEvent(Base):
+    __tablename__ = "appointment_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    appointment_id: Mapped[int | None] = mapped_column(ForeignKey("appointments.id"))
+    actor: Mapped[str] = mapped_column(String(80))
+    action: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ScheduleBlock(Base):
+    __tablename__ = "schedule_blocks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    barber: Mapped[str] = mapped_column(String(80), index=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    reason: Mapped[str] = mapped_column(String(200))
+    actor: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class StaffAccount(Base):
+    __tablename__ = "staff_accounts"
+    username: Mapped[str] = mapped_column(String(80), primary_key=True)
+    wa_id: Mapped[str] = mapped_column(String(32))
+    password_hash: Mapped[str] = mapped_column(String(256))
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class StaffSession(Base):
+    __tablename__ = "staff_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str] = mapped_column(ForeignKey("staff_accounts.username"), index=True)
+    csrf: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class MessagingPreference(Base):
+    __tablename__ = "messaging_preferences"
+    wa_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime)
+    opted_out: Mapped[bool] = mapped_column(default=False)
