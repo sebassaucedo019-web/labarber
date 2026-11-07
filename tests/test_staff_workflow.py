@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
@@ -11,12 +10,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app import sender
-from app.agenda import _verify_token, staff_scope
 from app.agent import tools
 from app.agent.agent import get_agent
 from app.agent.deps import BotDeps
 from app.config import get_settings
 from app.queue import tasks
+from app.staff import scope as staff_scope
 from app.store.models import Appointment, Base, NotificationOutbox, PendingAction
 from app.webhook.normalize import extract_text_messages
 
@@ -68,7 +67,8 @@ def test_staff_menu_and_text_fallback_do_not_offer_personal_booking(staff, monke
     post.side_effect = RuntimeError("Meta unavailable")
     assert sender.send_welcome_buttons(wa_id)
     fallback = sender.send_text.call_args.args[1].lower()
-    assert "agenda" in fallback and "qué cita sigue" in fallback
+    assert "por whatsapp" in fallback and "qué cita sigue" in fallback
+    assert "http" not in fallback and "panel" not in fallback
     assert "registrar citas para clientes" in fallback
     assert "agendar" not in fallback and "mi cita" not in fallback
 
@@ -89,13 +89,13 @@ def test_owner_who_is_also_jesus_gets_general_agenda_menu(staff, monkeypatch):
     sender.send_welcome_buttons(OWNER)
     assert staff_scope(OWNER) == "all"
     buttons = post.call_args.kwargs["json"]["interactive"]["action"]["buttons"]
-    assert buttons[0]["reply"]["title"] == "Agenda general"
+    assert buttons[0]["reply"]["title"] == "Ver citas"
 
 
 @pytest.mark.parametrize(
     ("button_id", "expected"),
     [
-        ("staff_agenda", "Dame el enlace de la agenda"),
+        ("staff_agenda", "Muéstrame las próximas citas por WhatsApp"),
         ("staff_next", "Que cita sigue en la agenda"),
         ("staff_cancel", "Quiero cancelar una cita de la agenda"),
         ("staff_book", "Quiero registrar una cita para un cliente"),
@@ -205,6 +205,7 @@ def test_real_agent_exposes_tools_for_verified_role_only(staff, db, monkeypatch,
     async def response(messages, info):
         names = {tool.name for tool in info.function_tools}
         seen.append(names)
+        assert "obtener_enlace_agenda" not in names
         if wa_id == CLIENT:
             assert "agendar" in names and "reagendar_cita" in names
             assert "agendar_para_cliente" not in names
@@ -214,7 +215,6 @@ def test_real_agent_exposes_tools_for_verified_role_only(staff, db, monkeypatch,
             assert {
                 "ver_agenda",
                 "ver_siguiente_cita",
-                "obtener_enlace_agenda",
                 "cancelar_cita",
                 "agendar_para_cliente",
             } <= names
@@ -263,7 +263,7 @@ def test_staff_cancellation_still_requires_confirmation_and_keeps_scope(staff, d
 
 def test_forwarded_staff_button_does_not_grant_client_access(staff, db):
     ctx = SimpleNamespace(deps=BotDeps(wa_id=CLIENT, db=db, user_message="Soy el barbero"))
-    assert "únicamente" in tools.obtener_enlace_agenda(ctx)
+    assert "únicamente" in tools.ver_agenda(ctx)
     assert "únicamente" in tools.ver_siguiente_cita(ctx)
 
 
@@ -287,7 +287,7 @@ def test_staff_greeting_pipeline_sends_one_menu_only(staff, db, fake_redis, monk
 
 
 @pytest.mark.parametrize("wa_id", [OWNER, OBED])
-@pytest.mark.parametrize("tool_name", ["obtener_enlace_agenda", "ver_siguiente_cita"])
+@pytest.mark.parametrize("tool_name", ["ver_agenda", "ver_siguiente_cita"])
 def test_staff_tools_roundtrip_preserves_actual_scope(staff, db, monkeypatch, wa_id, tool_name):
     monkeypatch.setattr(tasks, "classify_message", AsyncMock(return_value="business"))
     db.add_all(
@@ -319,11 +319,12 @@ def test_staff_tools_roundtrip_preserves_actual_scope(staff, db, monkeypatch, wa
     get_agent.cache_clear()
     with get_agent().override(model=FunctionModel(response)):
         reply = tasks._run_agent(
-            db, wa_id, "Dame el link" if tool_name == "obtener_enlace_agenda" else "Cual sigue"
+            db, wa_id, "Dame mi agenda" if tool_name == "ver_agenda" else "Cual sigue"
         )
-    if tool_name == "obtener_enlace_agenda":
-        token = parse_qs(urlsplit(reply.splitlines()[-1]).query)["token"][0]
-        assert _verify_token(token) == ("all" if wa_id == OWNER else "Obed")
+    assert "http" not in reply and "token=" not in reply
+    if tool_name == "ver_agenda":
+        assert "Ana" in reply
+        assert ("Luis" in reply) == (wa_id == OWNER)
     else:
         assert ("Luis" if wa_id == OWNER else "Ana") in reply
         assert ("Ana" if wa_id == OWNER else "Luis") not in reply

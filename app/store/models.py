@@ -131,22 +131,6 @@ class ScheduleBlock(Base):
     active: Mapped[bool] = mapped_column(default=True)
 
 
-class StaffAccount(Base):
-    __tablename__ = "staff_accounts"
-    username: Mapped[str] = mapped_column(String(80), primary_key=True)
-    wa_id: Mapped[str] = mapped_column(String(32))
-    password_hash: Mapped[str] = mapped_column(String(256))
-    active: Mapped[bool] = mapped_column(default=True)
-
-
-class StaffSession(Base):
-    __tablename__ = "staff_sessions"
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    username: Mapped[str] = mapped_column(ForeignKey("staff_accounts.username"), index=True)
-    csrf: Mapped[str] = mapped_column(String(64))
-    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
-
-
 class MessagingPreference(Base):
     __tablename__ = "messaging_preferences"
     wa_id: Mapped[str] = mapped_column(String(32), primary_key=True)

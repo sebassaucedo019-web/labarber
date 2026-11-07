@@ -93,7 +93,7 @@ def test_waia_migration_preserves_existing_citas_and_outbox(tmp_path, monkeypatc
         assert notice["message"] == "Confirmación pendiente"
         assert notice["kind"] == "appointment"
         assert notice["provider_message_id"] is None
-    assert {"staff_accounts", "staff_sessions", "appointment_events", "schedule_blocks"} <= set(
-        inspect(engine).get_table_names()
-    )
+    tables = set(inspect(engine).get_table_names())
+    assert {"appointment_events", "schedule_blocks"} <= tables
+    assert not {"staff_accounts", "staff_sessions"} & tables
     engine.dispose()

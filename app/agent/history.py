@@ -5,8 +5,11 @@ from pydantic_ai.messages import (
     ModelRequest,
     SystemPromptPart,
     TextPart,
+    ToolReturnPart,
     UserPromptPart,
 )
+
+from app.safety import retire_agenda_links
 
 
 def trim_history(messages: list[ModelMessage], limit: int = 24) -> list[ModelMessage]:
@@ -19,6 +22,9 @@ def trim_history(messages: list[ModelMessage], limit: int = 24) -> list[ModelMes
             ]
             if not message.parts:
                 continue
+        for part in message.parts:
+            if isinstance(part, (TextPart, ToolReturnPart)) and isinstance(part.content, str):
+                part.content = retire_agenda_links(part.content)
         cleaned.append(message)
     start = max(0, len(cleaned) - limit)
     while start < len(cleaned):

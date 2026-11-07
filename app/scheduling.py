@@ -1,4 +1,4 @@
-"""Shared calendar rules for the existing bot and the staff panel."""
+"""Reservation rules, staff schedules and persistent appointment state."""
 
 from datetime import datetime, timedelta
 from functools import wraps

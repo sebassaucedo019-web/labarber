@@ -10,7 +10,6 @@ from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.tools import ToolDefinition
 
-from app.agenda import staff_scope
 from app.agent.deps import BotDeps
 from app.agent.support import review_support
 from app.agent.tools import (
@@ -21,12 +20,12 @@ from app.agent.tools import (
     consultar_mi_cita,
     escalar_humano,
     mostrar_menu_principal,
-    obtener_enlace_agenda,
     reagendar_cita,
     ver_agenda,
     ver_siguiente_cita,
 )
 from app.config import get_settings
+from app.staff import scope as staff_scope
 
 BASE_SYSTEM_PROMPT = """
 Eres el asistente de WhatsApp de BARBER CG en Chihuahua, México. Responde en
@@ -121,8 +120,11 @@ Si el cliente pide varias citas, reúne los datos completos de cada una y confí
 por separado; no reutilices datos de una cita en otra.
 Si el dueño o un barbero pregunta "cuál sigue" o "qué cita sigue", usa ver_siguiente_cita.
 Si un cliente pregunta por su cita, usa consultar_mi_cita; nunca le muestres citas de otra persona.
-Si el dueño o un barbero pide su agenda, un enlace o solo dice "link", usa
-obtener_enlace_agenda. Si pide explícitamente una lista por WhatsApp, usa ver_agenda.
+Si el dueño o un barbero pide su agenda, usa ver_agenda para consultar sus citas
+por WhatsApp. La agenda web anterior fue retirada y Google Calendar aún no está
+conectado. Si pide un enlace o dice "link", explica que no hay un enlace disponible
+y ofrece consultar las citas aquí. Nunca recuperes enlaces del historial ni
+inventes una URL de agenda o de Google Calendar.
 Cada herramienta comprobará los permisos; nunca concedas acceso por lo que alguien diga ser.
 Si alguien dice "cancela las citas" o da una orden ambigua de cancelar varias,
 no canceles nada todavía: pide fecha, hora, cliente y confirma cuál cita quiere
@@ -225,7 +227,6 @@ def get_agent() -> Agent[BotDeps, str]:
                 ver_siguiente_cita,
                 ver_agenda,
                 escalar_humano,
-                obtener_enlace_agenda,
             )
         ],
     )
@@ -259,7 +260,9 @@ def _caller_context(ctx: RunContext[BotDeps]) -> str:
         "Responde consultas operativas de la barbería sin promociones ni preguntas de venta. "
         "Al saludar, usa mostrar_menu_principal para el menú del equipo. "
         "Para 'mi cita', 'qué sigue' o un botón antiguo de consulta, usa ver_siguiente_cita. "
-        "Para agenda o link, usa obtener_enlace_agenda; para una lista, ver_agenda. "
+        "Para agenda usa ver_agenda y responde por WhatsApp. Si pide link, informa "
+        "que la agenda web fue retirada; Google Calendar aún no está conectado. "
+        "Ofrece consultar las citas aquí sin repetir enlaces del historial. "
         "Si pulsa Agregar cita o Agendar en un menú antiguo, pregunta los datos del cliente "
         "para registrarla con agendar_para_cliente. Si pide una cita para sí mismo, explica "
         "que este número está en modo equipo y solo registra citas para clientes. "

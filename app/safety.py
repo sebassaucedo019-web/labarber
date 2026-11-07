@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit
 
 OUT_OF_SCOPE_REPLY = (
     "Eso no lo puedo responder, yo solo te ayudo con la barbería. "
@@ -36,13 +37,31 @@ def contains_banned_language(text: str) -> bool:
     return any(pattern.search(text) for pattern, _ in _BANNED_WORDS)
 
 
+def retire_agenda_links(text: str) -> str:
+    """Retire old web links in stored replies/history without discarding bookings."""
+
+    def replace(match: re.Match[str]) -> str:
+        url = match.group().rstrip(".,;:!?)]}")
+        try:
+            path = urlsplit(url).path.rstrip("/")
+        except ValueError:
+            return match.group()
+        if path in {"/agenda", "/panel"}:
+            return (
+                "[Agenda web retirada; consulta las citas por WhatsApp]" + match.group()[len(url) :]
+            )
+        return match.group()
+
+    return re.sub(r"https?://[^\s<>]+", replace, text, flags=re.IGNORECASE)
+
+
 def sanitize_reply(text: str) -> str:
     """Remove common insults while preserving normal Mexican tone.
 
     This is a last-mile guard: the model prompt sets the tone, but every outbound
     reply passes through here before it reaches WhatsApp.
     """
-    cleaned = text
+    cleaned = retire_agenda_links(text)
     for pattern, replacement in _BANNED_WORDS:
         cleaned = pattern.sub(replacement, cleaned)
     # WhatsApp can display Markdown markers literally in plain-text replies.

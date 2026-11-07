@@ -60,7 +60,6 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     crm_webhook_url: str | None = None
     escalation_webhook_url: str | None = None
-    public_base_url: str = "https://labarber-production-b9de.up.railway.app"
     owner_wa_id: str | None = None
     barber_obed_wa_id: str | None = None
     barber_jesus_wa_id: str | None = None

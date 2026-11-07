@@ -55,6 +55,26 @@ def test_failed_delivery_retries_reply_without_repeating_tools(worker):
     assert tasks._run_agent.call_count == 2
 
 
+def test_pre_upgrade_cached_link_retry_preserves_batch_and_does_not_rerun_tools(worker):
+    worker.rpush(f"batch:{WA_ID}", "Dame mi agenda")
+    worker.set(f"batch-started:{WA_ID}", "1")
+    worker.set(
+        f"reply:{WA_ID}",
+        "Cita confirmada.\nhttps://barber.example/agenda?token=old-secret",
+    )
+    tasks.send_text.side_effect = [False, True]
+    with pytest.raises(RuntimeError, match="pendiente"):
+        tasks.process_wa_id(WA_ID)
+    saved = worker.get(f"reply:{WA_ID}")
+    assert "Cita confirmada" in saved and "retirada" in saved
+    assert "old-secret" not in saved
+    assert worker.exists(f"batch:{WA_ID}")
+    tasks.process_wa_id(WA_ID)
+    tasks._run_agent.assert_not_called()
+    assert all(call.args == (WA_ID, saved) for call in tasks.send_text.call_args_list)
+    assert not worker.exists(f"batch:{WA_ID}", f"reply:{WA_ID}", f"batch-started:{WA_ID}")
+
+
 def test_menu_delivered_once_with_no_extra_text(worker):
     worker.rpush(f"pending:{WA_ID}", "Hola")
     tasks._run_agent.return_value = tasks.MENU_SENTINEL

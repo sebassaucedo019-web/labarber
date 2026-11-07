@@ -19,7 +19,6 @@ from pydantic_ai.usage import UsageLimits
 from redis.exceptions import WatchError
 from sqlalchemy.orm import Session
 
-from app.agenda import staff_scope
 from app.agent.agent import get_agent
 from app.agent.deps import BotDeps
 from app.agent.history import conversational_context, trim_history
@@ -34,9 +33,11 @@ from app.safety import (
     STAFF_HELP_REPLY,
     STAFF_OUT_OF_SCOPE_REPLY,
     contains_banned_language,
+    retire_agenda_links,
     sanitize_reply,
 )
 from app.sender import send_text, send_welcome_buttons, welcome_menu_text
+from app.staff import scope as staff_scope
 from app.store.postgres import get_session, load_history, log_message, save_history
 from app.store.redis_store import claim_batch, decode, get_redis, release_lock
 
@@ -122,6 +123,9 @@ def process_wa_id(wa_id: str) -> None:
                     reply = _run_agent(session, wa_id, prompt)
                 finally:
                     session.close()
+        # A pre-upgrade reply can still be waiting in Redis. Preserve the batch
+        # and its completed operations, but never resend a retired agenda link.
+        reply = retire_agenda_links(reply)
         _set_batch_value(wa_id, token, reply_key, reply)
         delivered = (
             send_welcome_buttons(wa_id) if reply == MENU_SENTINEL else send_text(wa_id, reply)

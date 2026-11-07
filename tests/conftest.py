@@ -16,7 +16,6 @@ _TEST_ENV = {
     "BARBER_JESUS_WA_ID": "",
     "BARBER_YADIER_WA_ID": "",
     "ESCALATION_WEBHOOK_URL": "",
-    "PUBLIC_BASE_URL": "https://labarber-production-b9de.up.railway.app",
     "BARBERS": "[]",
     "AUTOMATIC_NOTICES_ENABLED": "false",
     "REMINDER_TEMPLATE_NAME": "",

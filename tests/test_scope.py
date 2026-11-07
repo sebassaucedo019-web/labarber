@@ -1,5 +1,4 @@
 from app.scope import is_business_message, is_contextual_follow_up, is_greeting
-from app.agenda import is_agenda_link_request
 
 
 def test_ignores_unrelated_homework() -> None:
@@ -61,13 +60,3 @@ def test_rejects_unrelated_questions_beyond_math() -> None:
     assert is_contextual_follow_up("pm")
     assert is_contextual_follow_up("p.m.")
     assert is_contextual_follow_up("A nombre de Sofía")
-
-
-def test_detects_staff_agenda_link_requests() -> None:
-    assert is_agenda_link_request("Link")
-    assert is_agenda_link_request("enlace")
-    assert is_agenda_link_request("Pásame el link de mi agenda")
-    assert is_agenda_link_request("Quiero ver mi agenda en el celular")
-    assert is_agenda_link_request("Dame la agenda")
-    assert not is_agenda_link_request("Quiero agendar una cita")
-    assert not is_agenda_link_request("¿Qué servicios tienen?")

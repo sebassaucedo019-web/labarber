@@ -6,31 +6,25 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from app import notifications, panel, panel_auth, reminders, scheduling, staff
+from app import notifications, reminders, scheduling, staff
 from app.agent import tools
 from app.agent.deps import BotDeps
 from app.config import get_settings
-from app.main import app
 from app.store.models import (
     Appointment,
     AppointmentEvent,
     Base,
     MessagingPreference,
     NotificationOutbox,
-    StaffAccount,
-    StaffSession,
 )
 from app.webhook import receipts
 
 NOW = datetime(2026, 11, 1, 12)
 OWNER, OBED, JESUS, CLIENT = "526141111111", "526142222222", "526143333333", "526144444444"
-ORIGIN = "https://testserver"
-PASSWORD = "Synthetic-test-pass-678"
 REAL_TEMPLATE_SENDER = reminders.send_template_notice
 
 
@@ -41,9 +35,9 @@ def db(tmp_path, monkeypatch, fake_redis):
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    for module in (panel, panel_auth, reminders, notifications, receipts):
+    for module in (reminders, notifications, receipts):
         monkeypatch.setattr(module, "get_session", factory)
-    for module in (panel, reminders, scheduling):
+    for module in (reminders, scheduling):
         monkeypatch.setattr(module, "local_now", lambda: NOW)
     monkeypatch.setattr(tools, "_now", lambda: NOW)
     monkeypatch.setattr(tools, "confirm_action", lambda *args: True)
@@ -55,7 +49,6 @@ def db(tmp_path, monkeypatch, fake_redis):
         "OWNER_WA_ID": OWNER,
         "BARBER_OBED_WA_ID": OBED,
         "BARBER_JESUS_WA_ID": JESUS,
-        "PUBLIC_BASE_URL": ORIGIN,
         "AUTOMATIC_NOTICES_ENABLED": "false",
         "BARBERS": "[]",
     }.items():
@@ -405,116 +398,6 @@ def test_reservation_index_covers_arrived_and_completed(db):
         assert not scheduling.available(session, "Obed", row.starts_at)
 
 
-@pytest.fixture
-def browser(db):
-    with db() as session:
-        for username, phone in (("owner", OWNER), ("obed", OBED), ("jesus", JESUS)):
-            session.add(
-                StaffAccount(
-                    username=username, wa_id=phone, password_hash=panel_auth.password_hash(PASSWORD)
-                )
-            )
-        session.commit()
-    client = TestClient(app, base_url=ORIGIN)
-    yield client
-    client.close()
-
-
-def sign_in(client, username="obed"):
-    response = client.post(
-        "/api/agenda/login",
-        json={"username": username, "password": PASSWORD},
-        headers={"Origin": ORIGIN},
-    )
-    assert response.status_code == 200, response.text
-    assert (
-        "Secure" in response.headers["set-cookie"] and "HttpOnly" in response.headers["set-cookie"]
-    )
-    csrf = client.get("/api/agenda/session").json()["csrf"]
-    return {"Origin": ORIGIN, "X-CSRF-Token": csrf}
-
-
-def test_login_roles_csrf_and_inaccessible_foreign_appointments(browser, db):
-    assert browser.get("/api/agenda/calendar").status_code == 401
-    with db() as session:
-        own = appointment(session, -30)
-        foreign = appointment(session, 30, "Jesús")
-        session.commit()
-    headers = sign_in(browser)
-    calendar = browser.get("/api/agenda/calendar").json()
-    assert {r["id"] for r in calendar["appointments"]} == {own.id}
-    assert browser.get("/api/agenda/calendar?barber=Jesús").status_code == 403
-    body = {"state": "completed", "expected_status": "confirmed"}
-    assert (
-        browser.post(
-            f"/api/agenda/appointments/{foreign.id}/state", headers=headers, json=body
-        ).status_code
-        == 404
-    )
-    assert browser.post(f"/api/agenda/appointments/{own.id}/state", json=body).status_code == 403
-    assert (
-        browser.post(
-            f"/api/agenda/appointments/{own.id}/state",
-            headers={**headers, "Origin": "https://evil.test"},
-            json=body,
-        ).status_code
-        == 403
-    )
-    assert (
-        browser.post(
-            f"/api/agenda/appointments/{own.id}/state", headers=headers, json=body
-        ).status_code
-        == 200
-    )
-    assert browser.get("/api/agenda/notifications").status_code == 403
-    headers = sign_in(browser, "owner")
-    assert len(browser.get("/api/agenda/calendar").json()["appointments"]) == 2
-    assert browser.get("/api/agenda/notifications").status_code == 200
-    assert browser.post("/api/agenda/logout", headers=headers).status_code == 200
-    assert browser.get("/api/agenda/calendar").status_code == 401
-
-
-def test_staff_removed_from_configuration_loses_existing_session(browser, monkeypatch):
-    sign_in(browser)
-    monkeypatch.setenv("BARBER_OBED_WA_ID", "")
-    get_settings.cache_clear()
-    assert browser.get("/api/agenda/calendar").status_code == 401
-
-
-def test_login_rate_limit_and_session_revocation(browser, db):
-    for _ in range(8):
-        assert (
-            browser.post(
-                "/api/agenda/login",
-                json={"username": "nope", "password": "wrong"},
-                headers={"Origin": ORIGIN},
-            ).status_code
-            == 401
-        )
-    assert (
-        browser.post(
-            "/api/agenda/login",
-            json={"username": "nope", "password": "wrong"},
-            headers={"Origin": ORIGIN},
-        ).status_code
-        == 429
-    )
-    sign_in(browser)
-    with db() as session:
-        session.query(StaffSession).delete()
-        session.commit()
-    assert browser.get("/api/agenda/session").status_code == 401
-
-
-def test_panel_security_headers_and_no_private_pwa_cache(browser):
-    page = browser.get("/panel")
-    assert page.status_code == 200 and "Content-Security-Policy" in page.headers
-    assert page.headers["cache-control"] == "no-store"
-    assert "token=" not in browser.get("/agenda-assets/panel.webmanifest").text
-    worker = browser.get("/panel-sw.js").text
-    assert "caches.open" not in worker and "caches.put" not in worker
-
-
 def test_new_barber_config_without_code_changes(db, monkeypatch):
     monkeypatch.setenv(
         "BARBERS",
@@ -546,84 +429,6 @@ def test_template_payload_and_unknown_transport(db, monkeypatch):
         assert sent["biz_opaque_callback_data"] == f"waia:{n.id}:{n.event_id}"
         post.side_effect = httpx.ReadTimeout("synthetic timeout")
         assert real(n, row)[0] == "uncertain"
-
-
-def test_consent_cannot_override_customer_opt_out_or_other_barber(browser, db):
-    with db() as session:
-        own = appointment(session, 30, consent=False)
-        foreign = appointment(session, 30, "Jesús", consent=False)
-        session.add(MessagingPreference(wa_id=CLIENT, opted_out=True))
-        session.commit()
-    headers = sign_in(browser)
-    body = {"enabled": True, "source": "Permiso explícito simulado en persona"}
-    assert (
-        browser.post(
-            f"/api/agenda/appointments/{foreign.id}/consent", headers=headers, json=body
-        ).status_code
-        == 404
-    )
-    assert (
-        browser.post(
-            f"/api/agenda/appointments/{own.id}/consent", headers=headers, json=body
-        ).status_code
-        == 409
-    )
-    with db() as session:
-        assert not session.get(Appointment, own.id).reminder_consent
-
-
-def test_block_admin_permissions_and_stale_status(browser, db):
-    headers = sign_in(browser)
-    body = {
-        "barber": "Obed",
-        "starts_at": "2026-11-01T15:00:00",
-        "ends_at": "2026-11-01T16:00:00",
-        "reason": "Descanso de prueba",
-    }
-    assert browser.post("/api/agenda/blocks", headers=headers, json=body).status_code == 403
-    with db() as session:
-        row = appointment(session, -30, status="arrived")
-        session.commit()
-    response = browser.post(
-        f"/api/agenda/appointments/{row.id}/state",
-        headers=headers,
-        json={"state": "completed", "expected_status": "confirmed"},
-    )
-    assert response.status_code == 409
-    headers = sign_in(browser, "owner")
-    response = browser.post("/api/agenda/blocks", headers=headers, json=body)
-    assert response.status_code == 200
-    identity = response.json()["id"]
-    assert browser.post("/api/agenda/blocks", headers=headers, json=body).status_code == 409
-    assert browser.delete(f"/api/agenda/blocks/{identity}", headers=headers).status_code == 200
-    with db() as session:
-        assert session.get(Appointment, row.id).status == "arrived"
-
-
-def test_panel_body_limit_also_checks_stream_without_content_length(browser):
-    headers = {"Origin": ORIGIN, "Content-Type": "application/json"}
-    response = browser.post(
-        "/api/agenda/login", headers=headers, content=iter([b" " * 10000, b" " * 10000])
-    )
-    assert response.status_code == 413
-    response = browser.post(
-        "/api/agenda/login", headers=headers, json={"username": "unknown", "password": "wrong"}
-    )
-    assert response.status_code == 401
-
-
-def test_existing_agenda_displays_new_states_without_mislabeling():
-    from app.agenda import _format_row
-
-    for state in ("arrived", "in_service", "no_show"):
-        row = Appointment(
-            customer_name="Prueba",
-            service="corte normal",
-            barber="Obed",
-            starts_at=NOW,
-            status=state,
-        )
-        assert scheduling.LABELS[state] in _format_row(row)
 
 
 def test_rejected_booking_releases_calendar_transaction_before_model_response(db):

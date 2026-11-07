@@ -58,7 +58,7 @@ def extract_text_messages(
                         "services": "Ver servicios",
                         "book": "Agendar cita",
                         "my_appointment": "Consultar mi cita",
-                        "staff_agenda": "Dame el enlace de la agenda",
+                        "staff_agenda": "Muéstrame las próximas citas por WhatsApp",
                         "staff_next": "Que cita sigue en la agenda",
                         "staff_book": "Quiero registrar una cita para un cliente",
                         "staff_cancel": "Quiero cancelar una cita de la agenda",

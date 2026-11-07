@@ -1,16 +1,15 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import agenda
 from app.agent import tools
 from app.agent.deps import BotDeps
 from app.config import get_settings
+from app.staff import scope as staff_scope
 from app.store.models import Appointment, Base
 
 
@@ -54,26 +53,10 @@ def ctx(db, wa_id="5216149999999", message=""):
 
 
 def test_international_suffix_cannot_impersonate_staff(staff, db):
-    assert agenda.staff_scope("5216140000000") == "all"
-    assert agenda.staff_scope("526140000000") == "all"
-    assert agenda.staff_scope("16140000000") is None
+    assert staff_scope("5216140000000") == "all"
+    assert staff_scope("526140000000") == "all"
+    assert staff_scope("16140000000") is None
     assert tools._staff_access("16141111111") == (False, None)
-    assert agenda.create_agenda_link("16140000000") is None
-
-
-def test_token_expires_at_boundary_and_revokes_with_staff_change(staff, monkeypatch):
-    monkeypatch.setattr(agenda.time, "time", lambda: 1000)
-    link = agenda.create_agenda_link("6141111111")
-    token = parse_qs(urlparse(link).query)["token"][0]
-    assert agenda._verify_token(token) == "Obed"
-    monkeypatch.setenv("BARBER_OBED_WA_ID", "6142222222")
-    get_settings.cache_clear()
-    assert agenda._verify_token(token) is None
-    monkeypatch.setenv("BARBER_OBED_WA_ID", "6141111111")
-    get_settings.cache_clear()
-    monkeypatch.setattr(agenda.time, "time", lambda: 1000 + agenda.TOKEN_TTL_SECONDS)
-    assert agenda._verify_token(token) is None
-    assert agenda._verify_token("ñ.ñ") is None
 
 
 def test_same_time_reschedule_requires_selection(db):
@@ -170,31 +153,6 @@ def test_database_rejects_double_booking_but_allows_reusing_cancelled_slot(db):
     db.commit()
     replacement = appointment(db, "Other", when=row.starts_at)
     assert replacement.status == "confirmed"
-
-
-def test_agenda_shows_more_than_fifty_and_escapes_names(db, staff, monkeypatch):
-    fixed = tools._now().replace(hour=8, minute=0, second=0, microsecond=0)
-
-    class Clock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return fixed
-
-    monkeypatch.setattr(agenda, "datetime", Clock)
-    for day in range(3):
-        for slot in range(20):
-            appointment(
-                db,
-                name='<script>alert("x")</script>',
-                when=fixed + timedelta(days=day, hours=1, minutes=30 * slot),
-            )
-    monkeypatch.setattr(agenda, "get_session", lambda: db)
-    token = parse_qs(urlparse(agenda.create_agenda_link("6140000000")).query)["token"][0]
-    response = agenda.agenda_page(token)
-    content = response.body.decode()
-    assert "60 citas próximas" in content
-    assert '<script>alert("x")</script>' not in content
-    assert response.headers["referrer-policy"] == "no-referrer"
 
 
 def test_off_topic_escalation_cannot_be_authorized_by_model_reason(db, monkeypatch):

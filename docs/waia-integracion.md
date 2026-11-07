@@ -1,4 +1,17 @@
-# WAIA: integración sobre la agenda existente
+# Operación de citas por WhatsApp
+
+## Estado actual
+
+La interfaz web propia fue retirada: `/agenda`, `/panel`, `/api/agenda`, los
+assets y la PWA ya no forman parte del servicio. También se retiraron el comando
+`app.staff_account`, la herramienta de enlaces temporales y `PUBLIC_BASE_URL`.
+Los enlaces enviados anteriormente dejan de abrir una agenda; no se convierten
+en accesos de Google.
+
+La integración con Google Calendar está pendiente. Retirar la interfaz no copia
+citas ni activa sincronización. Las reservas y consultas continúan usando la
+base existente. Este documento conserva su ruta anterior para mantener los enlaces
+desde otras guías.
 
 ## Arquitectura y decisiones
 
@@ -6,47 +19,39 @@ Se conserva Python/FastAPI, SQLAlchemy/PostgreSQL, Redis/RQ y Meta Cloud API. La
 citas siguen en `appointments`; crear, confirmar, cambiar y cancelar continúa
 usando las herramientas actuales. No se introduce Node ni otra base de reservas.
 
-La agenda existente `/agenda` conserva sus enlaces de lectura. El panel `/panel`
-agrega acceso independiente con usuario y contraseña, sesiones revocables en la
-base, cookies HttpOnly/Secure y protección CSRF. Cada petición vuelve a comprobar
-el teléfono y alcance configurados; el dueño ve todo, cada barbero solo lo suyo.
+Los permisos del equipo se comprueban por el teléfono configurado: el dueño ve
+todas las citas y cada barbero solo las propias. No dependen de cuentas web ni de
+lo que el remitente diga ser.
 
 Estados: confirmed, arrived, in_service, completed, cancelled, no_show. Las
 reservas arrived/in_service/completed/no_show siguen ocupando su horario original;
 solo cancelled libera la reserva. Se conservan los intervalos actuales de 30 min
 como duración estimada, sin inventar nuevas duraciones por servicio.
 
-La finalización y el aviso se guardan en una misma transacción. Un sondeo durable
+Las reservas y sus avisos se guardan en una misma transacción. Un sondeo durable
 de la base prepara recordatorios; no depende de temporizadores por cita ni de
 Redis para reconstruirlos. El outbox existente procesa los envíos. Los avisos de
 turno y recordatorios comparten una clave por cita/horario/barbero para evitar
 avisos equivalentes. Se revalida la cita y el consentimiento antes de enviar.
 
-Los nuevos envíos permanecen desactivados por defecto. Las pruebas simulan Meta
-y usan datos ficticios. No se activa producción ni se envían mensajes reales.
+`AUTOMATIC_NOTICES_ENABLED=false` es el valor predeterminado para recordatorios y
+avisos de próximo turno. No desactiva las confirmaciones del bot ni su outbox.
+La retirada no habilita envíos automáticos ni modifica consentimientos.
 
 ## Acceso del equipo
 
-Abrir `https://DOMINIO_CONFIGURADO/panel`. `PUBLIC_BASE_URL` debe coincidir
-exactamente con ese origen HTTPS: otro dominio no puede enviar cambios autenticados.
-El panel pide usuario y contraseña una vez y conserva la sesión 30 días. No existen
-contraseñas predeterminadas ni registro público. Los enlaces antiguos `/agenda`
-siguen siendo de lectura; no otorgan permisos de edición del panel.
+El equipo consulta la agenda y la siguiente cita por WhatsApp. El menú conserva
+Ver citas, Agregar cita y Cancelar cita; la consulta devuelve un resumen por chat.
+Los botones antiguos se interpretan por identificador y no conceden permisos
+a quien los reenvía. Pedir un enlace no debe generar una URL de la interfaz retirada.
 
-En una consola privada del servicio, con las variables del entorno y la base
-correcta, ejecutar:
+Para registrar citas se requiere nombre y teléfono del cliente, servicio, fecha,
+hora y confirmación en otro mensaje. El barbero registra solo en su agenda; el
+dueño elige el barbero. Las cancelaciones también requieren identificar la cita
+y confirmar. Los clientes solo gestionan sus propias reservas.
 
-```sh
-python -m app.staff_account obed NUMERO_CONFIGURADO_DE_OBED
-python -m app.staff_account administrador NUMERO_CONFIGURADO_DEL_DUENO
-```
-
-El comando solicita la contraseña sin mostrarla (mínimo 12 caracteres); no se
-pasa en argumentos, chat ni Git. Ejecutarlo otra vez restablece el acceso y revoca
-sus sesiones. Agregar `--disable` desactiva el usuario y revoca sus sesiones.
-El teléfono debe seguir figurando en el directorio del equipo. Si un teléfono es
-del dueño y de un barbero, prevalece el permiso del dueño. Quitar el teléfono de
-la configuración también invalida el acceso en la siguiente petición.
+Si un teléfono es del dueño y de un barbero, prevalece el permiso del dueño.
+Las antiguas cuentas y sesiones web no conceden acceso a WhatsApp ni a Google.
 
 ## Directorio y horarios
 
@@ -71,7 +76,12 @@ revisar también las fechas históricas. La duración permanece estimada en 30 m
 
 ## Estados y bloqueos
 
-| Estado actual | Cambios permitidos en el panel |
+Las reglas de `app/scheduling.py` y los datos de estado se conservan. Al retirar
+el panel ya no hay una interfaz operativa para registrar llegada, inicio,
+finalización o inasistencia, ni para crear o quitar bloqueos. Estas funciones no
+se incorporan automáticamente al chat ni a Google Calendar.
+
+| Estado actual | Transiciones conservadas en el motor |
 | --- | --- |
 | Confirmada | Llegó, En atención, Atendido, No asistió |
 | Llegó | Deshacer llegada, En atención, Atendido |
@@ -82,24 +92,27 @@ La llegada se registra el mismo día, desde dos horas antes. En atención y Aten
 solo desde el inicio reservado. No asistió requiere al menos 15 minutos de espera.
 Deshacer llegada borra la marca actual, conservando el evento de auditoría.
 Las cancelaciones siguen en el flujo existente de WhatsApp con confirmación y
-permisos del equipo; el panel no incorpora un segundo motor de cancelación.
+permisos del equipo.
 
-Solo el administrador puede bloquear/desbloquear intervalos. Se rechazan
-solapamientos con citas o bloqueos. El bot consulta estos mismos bloqueos al
-mostrar disponibilidad, agendar y reagendar. Los cambios de estado no liberan
-accidentalmente un horario reservado. Las operaciones usan el mismo bloqueo de
-transacción que las reservas para evitar carreras entre panel y bot.
+El motor reserva al administrador la creación de bloqueos y rechaza solapamientos
+con citas o bloqueos. Los bloqueos existentes siguen restringiendo la disponibilidad
+al consultar, agendar y reagendar, aunque su interfaz de administración se haya
+retirado. No borrarlos para recuperar horarios sin revisar su propósito. Los cambios
+de estado no liberan un horario reservado. Se conserva el bloqueo de transacción
+compartido con las reservas y el índice que impide duplicar un horario.
 
 ## Consentimiento y mensajes
 
 No se presume permiso por disponer del teléfono. Cada cita inicia sin consentimiento
-para los nuevos avisos. El equipo registra un permiso real y su evidencia desde
-la tarjeta de la cita; puede revocarlo. No inventar evidencia ni habilitarlo en masa.
+para los avisos automáticos. Los consentimientos y evidencias existentes se
+conservan; al retirar el panel no queda una interfaz para registrar permiso por
+cita. Una futura integración deberá proporcionarla antes de ofrecer ese flujo.
+No inventar evidencia ni habilitarlo en masa.
 `BAJA`, `STOP`, `NO RECORDATORIOS` o `NO QUIERO RECORDATORIOS` recibidos por el
 webhook firmado revocan el consentimiento y anulan los avisos pendientes.
 `ALTA RECORDATORIOS` elimina la baja global, pero no reactiva silenciosamente
-permisos de citas anteriores: deben registrarse de nuevo. El panel impide que el
-equipo pase por alto una baja aún activa.
+permisos de citas anteriores ni concede permiso a nuevas citas. El envío sigue
+comprobando tanto el consentimiento por cita como la baja global.
 
 Los comandos se ordenan por su fecha de envío en WhatsApp, no por el orden de
 llegada al servidor. Los reintentos antiguos no reemplazan una decisión posterior;
@@ -109,7 +122,7 @@ tenían fecha registrada se exige una solicitud de alta reciente.
 
 La política de [WhatsApp Business](https://whatsappbusiness.com/policy/) requiere
 permiso y plantillas aprobadas para iniciar conversaciones fuera de la ventana
-de atención. Estos nuevos avisos usan siempre plantillas, incluso dentro de ella;
+de atención. Estos avisos usan siempre plantillas, incluso dentro de ella;
 no hay sustitución por texto libre si falta la plantilla.
 
 Crear y obtener aprobación en Meta de dos plantillas con tres parámetros en el
@@ -138,10 +151,11 @@ TURN_TEMPLATE_NAME=
 NOTIFICATION_TEMPLATE_LANGUAGE=es_MX
 ```
 
-Mantener el flag en `false` hasta contar con autorización para la prueba real.
-Este flag controla únicamente los dos tipos nuevos: no apaga las respuestas ni
-las confirmaciones existentes del bot. Las variables deben coincidir en web y
-worker. Nunca subir tokens a Git ni escribirlos en el documento.
+Mantener el flag en `false` hasta validar el flujo de consentimiento y contar con
+plantillas aprobadas y autorización para una prueba real. Este flag controla
+únicamente recordatorios y próximo turno: no apaga las respuestas ni las
+confirmaciones existentes del bot. Las variables deben coincidir en web y worker.
+Nunca subir tokens a Git ni escribirlos en el documento.
 
 ## Temporización, recuperación y entrega
 
@@ -149,7 +163,9 @@ worker. Nunca subir tokens a Git ni escribirlos en el documento.
   Tras reinicio reconstruye recordatorios de las citas; no requiere cron nuevo.
 - Recordatorios: de 30 a 5 minutos antes. Una cita creada/reagendada a menos de
   30 minutos no recibe este recordatorio; ya tiene su confirmación habitual.
-- Atendido: analiza la siguiente cita activa del mismo barbero. No salta sobre
+- Al ejecutar la transición a Atendido, el motor analiza la siguiente cita activa
+  del mismo barbero. El disparador operativo del panel fue retirado; conservar
+  esta función no crea una nueva forma de marcar Atendido. No salta sobre
   un cliente presente/en atención para avisar al de después. Solo prepara el
   aviso si faltan de 0 a 30 minutos. Nunca cambia la hora ni ofrece adelantarla.
 - Ambos avisos comparten clave por cita, horario, barbero y destinatario. Un
@@ -170,42 +186,39 @@ worker. Nunca subir tokens a Git ni escribirlos en el documento.
   retroceden por callbacks fuera de orden. No se garantiza entrega exactamente
   una vez a través de una red externa.
 - El cambio a Atendido queda confirmado antes del envío y no se revierte por
-  fallas de WhatsApp. El administrador puede consultar pendientes, envíos y
-  errores en Seguimiento de notificaciones.
+  fallas de WhatsApp. El seguimiento se conserva en `notification_outbox` y los
+  logs; la pantalla de seguimiento fue retirada. Consultar [outbox.md](outbox.md).
+
+El prefijo `waia:` de `biz_opaque_callback_data` sigue identificando los avisos
+en los callbacks de Meta. No es una dependencia de la interfaz: se conserva para
+reconocer estados de entrega, incluidos los de mensajes enviados antes de la retirada.
 
 ## Despliegue y comprobación
 
-1. Respaldar PostgreSQL. Desplegar web y worker con la misma versión, con avisos
-   desactivados. No mezclar workers antiguos que no conocen los nuevos estados.
-2. `init_db` agrega tablas, columnas e índice, sin borrar citas, chats ni outbox.
-   PostgreSQL serializa inicializaciones simultáneas. Si existen reservas
-   duplicadas que impiden crear el índice, falla el inicio conservando los datos:
-   revisar esos conflictos antes de continuar.
-3. Verificar `/health`, crear accesos privados con el comando anterior, probar
-   en HTTPS que cada barbero ve solo lo suyo y que el dueño ve todas las agendas.
-4. Confirmar que las citas del bot aparecen en el panel y sus bloqueos se respetan.
-   Comprobar los eventos y pendientes con datos de prueba.
-5. Tras autorización, usar destinatarios de prueba con consentimiento y plantillas
-   aprobadas. Activar el flag, verificar tanto aceptación como callback de entrega,
-   probar baja, reprogramación y reinicio. Solo entonces habilitar uso comercial.
-6. Para detener nuevos avisos, poner el flag en `false` y desplegar ambos servicios.
-   Las reservas y los cambios de estado continúan funcionando. No borrar la cola.
+1. Respaldar PostgreSQL. Desplegar web y worker con la misma versión, con
+   `AUTOMATIC_NOTICES_ENABLED=false`. No dejar procesos antiguos generando enlaces.
+2. La retirada no requiere `DROP`, recrear tablas ni vaciar Redis. Conservar citas,
+   conversaciones, confirmaciones pendientes, eventos, bloqueos, consentimientos,
+   outbox y tablas de cuentas/sesiones antiguas. `init_db` mantiene la inicialización
+   aditiva y el índice de reservas; los conflictos deben revisarse sin borrar datos.
+3. Quitar `PUBLIC_BASE_URL` de la configuración de despliegue: solo servía a la UI.
+   Conservar los secretos de Meta, el directorio del equipo y las variables de
+   reservas y avisos. Verificar `/health`, `/ready` y el worker.
+4. Comprobar que las rutas retiradas ya no exponen agendas ni permiten escrituras,
+   incluso con enlaces o cookies antiguos. No reenviar tokens antiguos a Google.
+   Mantener la ocultación de parámetros de consulta en logs, también por el webhook.
+5. Revisar el comportamiento de historiales con enlaces antiguos y de respuestas
+   de WhatsApp pendientes en Redis. No vaciar lotes ni deduplicación para retirarlos:
+   eso podría perder mensajes o repetir operaciones ya guardadas.
+6. Con datos de prueba, comprobar reservas y confirmaciones, permisos del equipo,
+   botones antiguos, resúmenes por chat, horarios y bloqueos, cancelación,
+   reagendado, recuperación del outbox y recepción de estados de entrega.
+7. Los avisos automáticos requieren una validación aparte de consentimiento,
+   plantillas, baja, reprogramación, reinicio y entrega. Poner el flag en `false`
+   detiene su envío; no borrar la cola ni los pendientes de confirmación.
 
-La PWA apunta a `/panel`, sin tokens en URL. No almacena agendas de clientes en
-caché; sin conexión informa que hay que conectarse y no permite cambios locales.
-Android/iOS pueden ofrecer Agregar a inicio; la instalación en teléfonos reales
-se debe comprobar por separado. El panel refresca cada 15 s y al volver a la
-pestaña, sin interrumpir formularios que se estén escribiendo.
-Las peticiones tienen un límite de 15 s. Una respuesta atrasada no cambia el
-filtro actual. Si se pierde la conexión durante una escritura, se informa que el
-resultado es incierto y se pide actualizar, sin repetir automáticamente el cambio.
-
-Pruebas locales: `uv run pytest -q`, `uv run ruff check app tests --select F,E9,B,UP`
-y `node --check app/static/agenda/panel.js`. La suite bloquea HTTP/LLM reales y
-usa SQLite, Redis simulado y números ficticios. Incluye concurrencia, reinicio,
-migración de datos anteriores, aislamiento de barberos, CSRF, caducidad/revocación,
-errores del proveedor, deduplicación y callbacks. La comprobación de PostgreSQL
-y de Meta en Railway es una etapa adicional; no equivale a los tests locales.
-Ejecutar también `node --test tests/panel_client.test.cjs`: prueba el controlador
-real del panel con DOM y red simulados, incluyendo timeouts, recargas concurrentes,
-cambios de filtro y cierre de sesión, sin instalar dependencias adicionales.
+Pruebas locales del backend: `uv run pytest -q` y
+`uv run ruff check app tests --select F,E9,B,UP`. La suite bloquea HTTP/LLM reales
+y usa SQLite, Redis simulado y números ficticios. La validación de PostgreSQL
+y de Meta en Railway es una etapa adicional. Esta actualización documental no
+certifica el resultado de esas comprobaciones ni una migración a Google Calendar.

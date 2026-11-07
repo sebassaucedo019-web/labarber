@@ -8,24 +8,24 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.agenda import agenda_link_message, staff_scope
+from app import staff
 from app.agent.confirmation import confirm_action
 from app.agent.deps import BotDeps
 from app.config import get_settings
 from app.escalation import notify_human
 from app.identity import normalize_phone, phone_aliases
 from app.safety import OUT_OF_SCOPE_REPLY, STAFF_HELP_REPLY, STAFF_OUT_OF_SCOPE_REPLY
-from app.store.models import Appointment
-from app import staff
 from app.scheduling import (
     ACTIVE,
+    audit,
     available,
     available_times,
     calendar_lock,
     close_calendar_transaction,
     invalidate_notices,
-    audit,
 )
+from app.staff import scope as staff_scope
+from app.store.models import Appointment
 
 SERVICES = {
     "corte normal": 120,
@@ -205,11 +205,6 @@ def ver_agenda(ctx: RunContext[BotDeps]) -> str:
         return "No hay citas próximas confirmadas."
     header = "Próximas citas:" if is_admin else f"Tus próximas citas ({barber_filter}):"
     return header + "\n" + "\n".join(_format_appointment(row) for row in rows)
-
-
-def obtener_enlace_agenda(ctx: RunContext[BotDeps]) -> str:
-    """Genera un enlace móvil temporal para el dueño o el barbero autenticado."""
-    return agenda_link_message(ctx.deps.wa_id)
 
 
 def mostrar_menu_principal(ctx: RunContext[BotDeps]) -> str:
