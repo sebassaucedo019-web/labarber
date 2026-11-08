@@ -5,6 +5,8 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from app.store.calendar_time import CalendarDateTime
+
 
 class Base(DeclarativeBase):
     pass
@@ -41,7 +43,7 @@ class PendingAction(Base):
     action: Mapped[str] = mapped_column(String(20))
     payload: Mapped[str] = mapped_column(Text)
     turn_id: Mapped[str] = mapped_column(String(64))
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    expires_at: Mapped[datetime] = mapped_column(CalendarDateTime)
 
 
 class Appointment(Base):
@@ -53,16 +55,17 @@ class Appointment(Base):
     wa_id: Mapped[str] = mapped_column(String(32), index=True)
     customer_name: Mapped[str] = mapped_column(String(120))
     service: Mapped[str] = mapped_column(String(80))
+    duration_minutes: Mapped[int] = mapped_column(default=30, server_default=text("30"))
     barber: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
-    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    starts_at: Mapped[datetime] = mapped_column(CalendarDateTime, index=True)
     status: Mapped[str] = mapped_column(String(16), default="confirmed", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    arrived_at: Mapped[datetime | None] = mapped_column(DateTime)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    arrived_at: Mapped[datetime | None] = mapped_column(CalendarDateTime)
+    started_at: Mapped[datetime | None] = mapped_column(CalendarDateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(CalendarDateTime)
     reminder_consent: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     consent_source: Mapped[str | None] = mapped_column(String(300))
-    schedule_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    schedule_updated_at: Mapped[datetime | None] = mapped_column(CalendarDateTime)
 
     __table_args__ = (
         # Prevent two workers from confirming the same barber and time under load.
@@ -97,7 +100,7 @@ class NotificationOutbox(Base):
     kind: Mapped[str] = mapped_column(
         String(24), default="appointment", server_default="appointment"
     )
-    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime)
+    scheduled_start: Mapped[datetime | None] = mapped_column(CalendarDateTime)
     scheduled_barber: Mapped[str | None] = mapped_column(String(80))
     provider_message_id: Mapped[str | None] = mapped_column(String(256))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -124,8 +127,8 @@ class ScheduleBlock(Base):
     __tablename__ = "schedule_blocks"
     id: Mapped[int] = mapped_column(primary_key=True)
     barber: Mapped[str] = mapped_column(String(80), index=True)
-    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
-    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    starts_at: Mapped[datetime] = mapped_column(CalendarDateTime, index=True)
+    ends_at: Mapped[datetime] = mapped_column(CalendarDateTime)
     reason: Mapped[str] = mapped_column(String(200))
     actor: Mapped[str] = mapped_column(String(80))
     active: Mapped[bool] = mapped_column(default=True)
@@ -137,3 +140,15 @@ class MessagingPreference(Base):
     # UTC timestamp of the last applied reminder preference command.
     last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime)
     opted_out: Mapped[bool] = mapped_column(default=False)
+
+
+class CustomerWindow(Base):
+    __tablename__ = "customer_windows"
+    wa_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # Separate from opt-out commands. Always UTC, derived from signed Meta input.
+    last_message_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class SchemaMigration(Base):
+    __tablename__ = "schema_migrations"
+    name: Mapped[str] = mapped_column(String(80), primary_key=True)

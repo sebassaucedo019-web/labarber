@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 MAX_INBOUND_TEXT_LENGTH = 4000
 
@@ -8,12 +8,13 @@ class InboundText(TypedDict):
     wa_id: str
     message_id: str
     text: str
+    kind: NotRequired[str]
 
 
 def extract_text_messages(
     payload: dict[str, Any], *, phone_number_id: str | None = None
 ) -> Iterator[InboundText]:
-    """Solo mensajes de texto. Para audio, ver examples/audio_transcripcion."""
+    """Text/buttons plus explicit notices for media not supported by this deployment."""
     entries = payload.get("entry", [])
     if not isinstance(entries, list):
         return
@@ -43,6 +44,7 @@ def extract_text_messages(
                 if not isinstance(message, dict):
                     continue
                 message_type = message.get("type")
+                kind = "text"
                 if message_type == "text":
                     text_data = message.get("text", {})
                     text = text_data.get("body", "") if isinstance(text_data, dict) else ""
@@ -65,6 +67,17 @@ def extract_text_messages(
                     }
                     text = intents.get(button_id, "") if isinstance(button_id, str) else ""
                     text = text or reply.get("title") or ""
+                elif message_type in {
+                    "audio",
+                    "image",
+                    "video",
+                    "document",
+                    "sticker",
+                    "location",
+                    "contacts",
+                    "unsupported",
+                }:
+                    kind, text = "media", ""
                 else:
                     continue
                 if not isinstance(text, str):
@@ -77,11 +90,14 @@ def extract_text_messages(
                     or not isinstance(message_id, str)
                     or not sender.strip()
                     or not message_id.strip()
-                    or not text
+                    or (not text and kind == "text")
                 ):
                     continue
-                yield InboundText(
+                result = InboundText(
                     wa_id=sender.strip(),
                     message_id=message_id.strip(),
                     text=text,
                 )
+                if kind != "text":
+                    result["kind"] = kind
+                yield result

@@ -6,11 +6,13 @@ from uuid import uuid4
 import httpx
 from redis.exceptions import WatchError
 
+from app.appointment_template import send_appointment_template
 from app.config import get_settings
 from app.identity import normalize_phone
+from app.messaging_window import window_is_open
 from app.observability import hash_wa_id
-from app.store.redis_store import decode, get_redis
 from app.staff import names, recipient
+from app.store.redis_store import decode, get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ def _notice_key(wa_id: str, target: str = "owner") -> str:
     return f"escalated:v2:{hash_wa_id(normalize_phone(wa_id) or wa_id)}:{recipient_key}"
 
 
-def _finish_notice(dedupe_key: str, token: str, notified: bool) -> None:
+def _finish_notice(dedupe_key: str, token: str, notified: bool, uncertain: bool = False) -> None:
     redis = get_redis()
     while True:
         with redis.pipeline() as pipe:
@@ -39,6 +41,8 @@ def _finish_notice(dedupe_key: str, token: str, notified: bool) -> None:
                 pipe.multi()
                 if notified:
                     pipe.set(dedupe_key, "sent", ex=300)
+                elif uncertain:
+                    pipe.set(dedupe_key, "uncertain", ex=300)
                 else:
                     pipe.delete(dedupe_key)
                 pipe.execute()
@@ -68,16 +72,23 @@ def notify_human(wa_id: str, motivo: str, *, target: str = "owner") -> NoticeSta
     if not redis.set(dedupe_key, token, nx=True, ex=60):
         return "recent" if decode(redis.get(dedupe_key)) == "sent" else "pending"
     notified = False
+    uncertain = False
     try:
         if recipient:
             from app.sender import send_text
 
-            notified = send_text(
-                recipient,
-                f"Solicitud de atención en BARBER CG\nCliente: +{wa_id}\n"
+            message = (
+                f"Solicitud de atención en {settings.business_name}\nCliente: +{wa_id}\n"
                 f"Para: {'el equipo' if target == 'owner' else target}\n"
-                f"Mensaje del cliente: {motivo[:1000]}",
+                f"Mensaje del cliente: {motivo[:750]}"
             )
+            if window_is_open(recipient):
+                notified = send_text(recipient, message)
+            else:
+                state, _ = send_appointment_template(
+                    recipient, message, template_name=settings.support_template_name
+                )
+                notified, uncertain = state == "sent", state == "uncertain"
         if webhook_url:
             payload = _build_payload(wa_id, motivo, webhook_url)
             try:
@@ -90,10 +101,10 @@ def notify_human(wa_id: str, motivo: str, *, target: str = "owner") -> NoticeSta
                 )
         elif not notified:
             logger.warning("escalado no entregado wa_id_hash=%s", hash_wa_id(wa_id))
-        return "sent" if notified else "failed"
+        return "sent" if notified else "pending" if uncertain else "failed"
     finally:
         try:
-            _finish_notice(dedupe_key, token, notified)
+            _finish_notice(dedupe_key, token, notified, uncertain)
         except Exception:
             # A bookkeeping failure must not contradict an accepted delivery.
             logger.exception("no se guardó el estado del aviso wa_id_hash=%s", hash_wa_id(wa_id))

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.staff import working_slot
 from app.store.models import Appointment, AppointmentEvent, NotificationOutbox, ScheduleBlock
 
@@ -49,14 +50,33 @@ def close_calendar_transaction(operation):
     return wrapped
 
 
-def blocked(session: Session, barber: str, at: datetime) -> bool:
+def service_duration(service: str) -> int:
+    return get_settings().service_durations.get(service, 30)
+
+
+def booking_time_error(at: datetime, now: datetime) -> str | None:
+    settings = get_settings()
+    if at <= now:
+        return "Esa fecha y hora ya pasó."
+    if at - now < timedelta(minutes=settings.booking_min_notice_minutes):
+        return (
+            f"Se requiere al menos {settings.booking_min_notice_minutes} minutos de anticipación."
+        )
+    if settings.booking_max_advance_days is not None and at - now > timedelta(
+        days=settings.booking_max_advance_days
+    ):
+        return f"Solo se puede reservar hasta {settings.booking_max_advance_days} días antes."
+    return None
+
+
+def blocked(session: Session, barber: str, at: datetime, duration_minutes: int = 30) -> bool:
     return (
         session.scalar(
             select(ScheduleBlock.id)
             .where(
                 ScheduleBlock.barber == barber,
                 ScheduleBlock.active.is_(True),
-                ScheduleBlock.starts_at < at + timedelta(minutes=30),
+                ScheduleBlock.starts_at < at + timedelta(minutes=duration_minutes),
                 ScheduleBlock.ends_at > at,
             )
             .limit(1)
@@ -65,33 +85,38 @@ def blocked(session: Session, barber: str, at: datetime) -> bool:
     )
 
 
-def available(session: Session, barber: str, at: datetime, exclude: int | None = None) -> bool:
-    if not working_slot(barber, at) or blocked(session, barber, at):
+def available(
+    session: Session,
+    barber: str,
+    at: datetime,
+    exclude: int | None = None,
+    duration_minutes: int = 30,
+) -> bool:
+    if not working_slot(barber, at, duration_minutes) or blocked(
+        session, barber, at, duration_minutes
+    ):
         return False
-    return (
-        session.scalar(
-            select(Appointment.id)
-            .where(
-                Appointment.barber == barber,
-                Appointment.status != "cancelled",
-                Appointment.starts_at == at,
-                Appointment.id != (exclude or -1),
-            )
-            .limit(1)
+    rows = session.scalars(
+        select(Appointment).where(
+            Appointment.barber == barber,
+            Appointment.status != "cancelled",
+            Appointment.starts_at < at + timedelta(minutes=duration_minutes),
+            Appointment.starts_at >= at - timedelta(days=1),
+            Appointment.id != (exclude or -1),
         )
-        is None
     )
+    return not any(row.starts_at + timedelta(minutes=row.duration_minutes) > at for row in rows)
 
 
-def available_times(session, barber, day, now):
+def available_times(session, barber, day, now, duration_minutes=30):
     start = datetime.combine(day, datetime.min.time())
     end = start + timedelta(days=1)
-    occupied = set(
+    occupied = list(
         session.scalars(
-            select(Appointment.starts_at).where(
+            select(Appointment).where(
                 Appointment.barber == barber,
                 Appointment.status != "cancelled",
-                Appointment.starts_at >= start,
+                Appointment.starts_at >= start - timedelta(days=1),
                 Appointment.starts_at < end,
             )
         ).all()
@@ -108,10 +133,17 @@ def available_times(session, barber, day, now):
         at
         for half in range(48)
         for at in (start + timedelta(minutes=half * 30),)
-        if at > now
-        and at not in occupied
-        and working_slot(barber, at)
-        and not any(b.starts_at < at + timedelta(minutes=30) and b.ends_at > at for b in blocks)
+        if booking_time_error(at, now) is None
+        and working_slot(barber, at, duration_minutes)
+        and not any(
+            row.starts_at < at + timedelta(minutes=duration_minutes)
+            and row.starts_at + timedelta(minutes=row.duration_minutes) > at
+            for row in occupied
+        )
+        and not any(
+            b.starts_at < at + timedelta(minutes=duration_minutes) and b.ends_at > at
+            for b in blocks
+        )
     ]
 
 
@@ -210,15 +242,16 @@ def create_block(session, scope, actor, barber, start, end, reason):
     if start < local_now():
         raise ValueError("No se bloquean horarios pasados")
     calendar_lock(session)
-    conflict = session.scalar(
-        select(Appointment.id)
-        .where(
+    candidates = session.scalars(
+        select(Appointment).where(
             Appointment.barber == barber,
             Appointment.status != "cancelled",
-            Appointment.starts_at >= start - timedelta(minutes=29),
+            Appointment.starts_at >= start - timedelta(days=1),
             Appointment.starts_at < end,
         )
-        .limit(1)
+    )
+    conflict = any(
+        row.starts_at + timedelta(minutes=row.duration_minutes) > start for row in candidates
     )
     overlap = session.scalar(
         select(ScheduleBlock.id)

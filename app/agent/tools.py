@@ -20,9 +20,11 @@ from app.scheduling import (
     audit,
     available,
     available_times,
+    booking_time_error,
     calendar_lock,
     close_calendar_transaction,
     invalidate_notices,
+    service_duration,
 )
 from app.staff import scope as staff_scope
 from app.store.models import Appointment
@@ -71,11 +73,13 @@ def _valid_slot(starts_at: datetime) -> bool:
 
 
 def buscar_pedido(ctx: RunContext[BotDeps], numero_pedido: str) -> str:
-    """Compatibilidad con la plantilla original; BARBER CG no usa pedidos."""
-    return f"Pedido {numero_pedido}: función no disponible en BARBER CG."
+    """Compatibilidad con la plantilla original; la barbería no usa pedidos."""
+    return f"Pedido {numero_pedido}: función no disponible en {get_settings().business_name}."
 
 
-def consultar_disponibilidad(ctx: RunContext[BotDeps], fecha: str, barbero: str) -> str:
+def consultar_disponibilidad(
+    ctx: RunContext[BotDeps], fecha: str, barbero: str, servicio: str | None = None
+) -> str:
     """Consulta las horas ocupadas para una fecha YYYY-MM-DD."""
     try:
         day = datetime.strptime(fecha.strip(), "%Y-%m-%d").date()
@@ -86,7 +90,17 @@ def consultar_disponibilidad(ctx: RunContext[BotDeps], fecha: str, barbero: str)
     barber = _barber_key(barbero)
     if barber is None:
         return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
-    free_times = [at.strftime("%H:%M") for at in available_times(ctx.deps.db, barber, day, _now())]
+    service = _service_key(servicio) if servicio else None
+    if servicio and service is None:
+        return "Necesito un servicio válido para consultar su disponibilidad."
+    if not servicio and get_settings().service_durations:
+        return "¿Qué servicio quieres? Necesito su duración para revisar espacios completos."
+    free_times = [
+        at.strftime("%H:%M")
+        for at in available_times(
+            ctx.deps.db, barber, day, _now(), service_duration(service or "corte normal")
+        )
+    ]
     return f"Horarios disponibles para {fecha}: {', '.join(free_times) or 'no hay espacios'}."
 
 
@@ -149,7 +163,7 @@ def _notify_staff_of_appointment(
 ) -> None:
     _notify_staff(
         appointment,
-        "Confirmación de cita en BARBER CG 💈\n"
+        f"Confirmación de cita en {get_settings().business_name} 💈\n"
         f"{_format_appointment(appointment)}\n"
         f"Cliente: {appointment.customer_name}\n"
         "La cita quedó confirmada.",
@@ -178,7 +192,7 @@ def ver_siguiente_cita(ctx: RunContext[BotDeps]) -> str:
     """Muestra la siguiente cita al dueño o al barbero que consulta."""
     is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
     if not is_admin and barber_filter is None:
-        return "Esta consulta está disponible únicamente para el dueño o los barberos de BARBER CG."
+        return "Esta consulta está disponible únicamente para el dueño o los barberos del negocio."
     conditions = [Appointment.starts_at >= _now(), Appointment.status.in_(ACTIVE)]
     if barber_filter:
         conditions.append(Appointment.barber == barber_filter)
@@ -194,7 +208,7 @@ def ver_agenda(ctx: RunContext[BotDeps]) -> str:
     """Lista citas próximas: el dueño ve todas; cada barbero ve las suyas."""
     is_admin, barber_filter = _staff_access(ctx.deps.wa_id)
     if not is_admin and barber_filter is None:
-        return "Esta consulta está disponible únicamente para el dueño o los barberos de BARBER CG."
+        return "Esta consulta está disponible únicamente para el dueño o los barberos del negocio."
     conditions = [Appointment.starts_at >= _now(), Appointment.status.in_(ACTIVE)]
     if barber_filter:
         conditions.append(Appointment.barber == barber_filter)
@@ -302,16 +316,20 @@ def _book_appointment(
         )
     if barber is None:
         return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
-    if not staff.working_slot(barber, starts_at):
-        return "Ese horario está fuera de la jornada del barbero; consulta disponibilidad en intervalos de 30 minutos."
+    duration = service_duration(service)
+    if not staff.working_slot(barber, starts_at, duration):
+        return (
+            "Ese horario está fuera de la jornada del barbero; "
+            "consulta disponibilidad en intervalos de 30 minutos."
+        )
     if not nombre.strip():
         return (
             "Necesito el nombre del cliente para registrar la cita."
             if staff_booking
             else ("También necesito tu nombre para reservar la cita.")
         )
-    if starts_at <= _now():
-        return "Esa fecha y hora ya pasó."
+    if error := booking_time_error(starts_at, _now()):
+        return error
     calendar_lock(ctx.deps.db)
     conflict = ctx.deps.db.scalar(
         select(Appointment).where(
@@ -328,8 +346,8 @@ def _book_appointment(
         ):
             return f"La cita ya estaba confirmada: {_format_appointment(conflict)}."
         return "Ese horario ya está ocupado. Consulta disponibilidad para elegir otro."
-    if not available(ctx.deps.db, barber, starts_at):
-        return "Ese horario está bloqueado o fuera del horario de ese barbero."
+    if not available(ctx.deps.db, barber, starts_at, duration_minutes=duration):
+        return "Ese horario está ocupado, bloqueado o no tiene espacio para el servicio completo."
     if not confirm_action(
         ctx.deps,
         "staff_book" if staff_booking else "book",
@@ -338,6 +356,7 @@ def _book_appointment(
             "service": service,
             "name": nombre.strip()[:120],
             "barber": barber,
+            "duration_minutes": duration,
             **({"customer_phone": customer} if staff_booking else {}),
         },
         f"Reservar para {nombre.strip()[:120]}: {service} (${SERVICES[service]} MXN), "
@@ -351,6 +370,7 @@ def _book_appointment(
         service=service,
         barber=barber,
         starts_at=starts_at,
+        duration_minutes=duration,
         schedule_updated_at=_now(),
     )
     try:
@@ -367,7 +387,7 @@ def _book_appointment(
         if staff_booking:
             _send_notification(
                 customer,
-                "El equipo de BARBER CG registró tu cita:\n"
+                f"El equipo de {get_settings().business_name} registró tu cita:\n"
                 + _format_appointment(appointment)
                 + ".\nPuedes escribirnos para consultar o gestionar tu cita.",
                 session=ctx.deps.db,
@@ -452,7 +472,7 @@ def cancelar_cita(
     try:
         _notify_staff(
             appointment,
-            "Cita cancelada en BARBER CG 💈\n"
+            f"Cita cancelada en {get_settings().business_name} 💈\n"
             f"{_format_appointment(appointment)}\n"
             f"Cliente: {appointment.customer_name}",
             session=ctx.deps.db,
@@ -463,7 +483,7 @@ def cancelar_cita(
         ):
             _send_notification(
                 appointment.wa_id,
-                "BARBER CG canceló tu cita: "
+                f"{get_settings().business_name} canceló tu cita: "
                 + _format_appointment(appointment)
                 + ". Escríbenos para elegir otro horario.",
                 session=ctx.deps.db,
@@ -496,16 +516,43 @@ def reagendar_cita(
     """Mueve una cita propia, incluso a otro barbero, si el horario está libre."""
     if staff_scope(ctx.deps.wa_id) is not None:
         return STAFF_HELP_REPLY
+    return _reschedule(ctx, fecha_actual, fecha_nueva, nuevo_barbero, cliente, cita_id)
+
+
+def reagendar_para_cliente(
+    ctx: RunContext[BotDeps],
+    fecha_actual: str,
+    fecha_nueva: str,
+    cliente: str | None = None,
+    cita_id: int | None = None,
+    nuevo_barbero: str | None = None,
+) -> str:
+    """El equipo autoriza y realiza un cambio, incluso con menos de tres horas.
+
+    El barbero solo cambia sus citas dentro de su agenda; el dueño puede reasignar.
+    Siempre requiere confirmar los datos en un mensaje posterior.
+    """
+    if staff_scope(ctx.deps.wa_id) is None:
+        return "Esta operación requiere el número verificado del equipo."
+    return _reschedule(ctx, fecha_actual, fecha_nueva, nuevo_barbero, cliente, cita_id)
+
+
+@close_calendar_transaction
+def _reschedule(ctx, fecha_actual, fecha_nueva, nuevo_barbero, cliente, cita_id):
+    actor_scope = staff_scope(ctx.deps.wa_id)
     old = _parse_datetime(fecha_actual)
     new = _parse_datetime(fecha_nueva)
     if old is None or new is None:
         return "Necesito ambas fechas como AAAA-MM-DD HH:MM."
     calendar_lock(ctx.deps.db)
     conditions = [
-        Appointment.wa_id.in_(phone_aliases(ctx.deps.wa_id)),
         Appointment.starts_at == old,
         Appointment.status == "confirmed",
     ]
+    if actor_scope is None:
+        conditions.append(Appointment.wa_id.in_(phone_aliases(ctx.deps.wa_id)))
+    elif actor_scope != "all":
+        conditions.append(Appointment.barber == actor_scope)
     if cita_id is not None:
         conditions.append(Appointment.id == cita_id)
     appointments = ctx.deps.db.scalars(
@@ -528,12 +575,28 @@ def reagendar_cita(
         target_barber = _barber_key(nuevo_barbero)
         if target_barber is None:
             return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
-    if not target_barber or not staff.working_slot(target_barber, new) or new <= _now():
-        return "El nuevo horario debe ser futuro y estar dentro de la jornada del barbero, en intervalos de 30 minutos."
+    if (
+        not target_barber
+        or not staff.working_slot(target_barber, new, appointment.duration_minutes)
+        or new <= _now()
+    ):
+        return (
+            "El nuevo horario debe ser futuro y estar dentro de la jornada del barbero, "
+            "en intervalos de 30 minutos."
+        )
     if target_barber is None:
         return "Elige uno de estos barberos: " + ", ".join(staff.names()) + "."
     if new == old and target_barber == appointment.barber:
         return f"La cita ya tiene ese horario y barbero: {_format_appointment(appointment)}."
+    if error := booking_time_error(new, _now()):
+        return error
+    if actor_scope is None and old - _now() < timedelta(hours=3):
+        return (
+            "Faltan menos de 3 horas: el cambio requiere autorización del equipo. "
+            "Tu cita sigue igual. ¿Quieres que solicitemos ayuda a tu barbero?"
+        )
+    if actor_scope not in (None, "all", target_barber):
+        return "Solo puedes cambiar citas dentro de tu propia agenda; el dueño puede reasignarlas."
     if ctx.deps.db.scalar(
         select(Appointment).where(
             Appointment.id != appointment.id,
@@ -543,17 +606,20 @@ def reagendar_cita(
         )
     ):
         return "El nuevo horario ya está ocupado."
-    if not available(ctx.deps.db, target_barber, new, appointment.id):
-        return "El nuevo horario está bloqueado o fuera del horario del barbero."
+    if not available(ctx.deps.db, target_barber, new, appointment.id, appointment.duration_minutes):
+        return (
+            "El nuevo horario está ocupado, bloqueado o no tiene espacio para el servicio completo."
+        )
     if not confirm_action(
         ctx.deps,
-        "reschedule",
+        "staff_reschedule" if actor_scope else "reschedule",
         {
             "appointment_id": appointment.id,
             "old": old.isoformat(),
             "new": new.isoformat(),
             "old_barber": appointment.barber,
             "new_barber": target_barber,
+            "duration_minutes": appointment.duration_minutes,
         },
         f"Cambiar la cita de {appointment.customer_name} del {old:%d/%m/%Y %H:%M} "
         f"al {new:%d/%m/%Y %H:%M} con {target_barber}.",
@@ -568,7 +634,7 @@ def reagendar_cita(
     audit(ctx.deps.db, appointment.id, ctx.deps.wa_id, "reschedule", f"{old} -> {new}")
     if old_starts_at == new and old_barber != target_barber:
         staff_message = (
-            "Cambio de barbero en BARBER CG 💈\n"
+            f"Cambio de barbero en {get_settings().business_name} 💈\n"
             f"Cliente: {appointment.customer_name}\n"
             f"Horario: {new:%d/%m/%Y %H:%M}\n"
             f"Barbero anterior: {old_barber}\n"
@@ -576,7 +642,7 @@ def reagendar_cita(
         )
     elif old_starts_at != new and old_barber == target_barber:
         staff_message = (
-            "Cita reagendada en BARBER CG 💈\n"
+            f"Cita reagendada en {get_settings().business_name} 💈\n"
             f"Cliente: {appointment.customer_name}\n"
             f"Antes: {old_starts_at:%d/%m/%Y %H:%M}\n"
             f"Ahora: {new:%d/%m/%Y %H:%M}\n"
@@ -584,7 +650,7 @@ def reagendar_cita(
         )
     else:
         staff_message = (
-            "Cambio de barbero y horario en BARBER CG 💈\n"
+            f"Cambio de barbero y horario en {get_settings().business_name} 💈\n"
             f"Cliente: {appointment.customer_name}\n"
             f"Antes: {old_starts_at:%d/%m/%Y %H:%M} con {old_barber}\n"
             f"Ahora: {new:%d/%m/%Y %H:%M} con {target_barber}"
@@ -592,6 +658,15 @@ def reagendar_cita(
     event_id = uuid4().hex
     try:
         _notify_staff(appointment, staff_message, session=ctx.deps.db, event_id=event_id)
+        if actor_scope and normalize_phone(appointment.wa_id) != normalize_phone(ctx.deps.wa_id):
+            _send_notification(
+                appointment.wa_id,
+                f"El equipo de {get_settings().business_name} cambió tu cita:\n"
+                + _format_appointment(appointment),
+                session=ctx.deps.db,
+                appointment_id=appointment.id,
+                event_id=event_id,
+            )
         if old_barber and old_barber != target_barber:
             old_recipient = _staff_recipient(old_barber)
             new_recipients = {
@@ -600,8 +675,9 @@ def reagendar_cita(
             if old_recipient and normalize_phone(old_recipient) not in new_recipients:
                 _send_notification(
                     old_recipient,
-                    "Cambio de cita en BARBER CG 💈\n"
-                    f"La cita de {appointment.customer_name} pasó de {old_barber} a {target_barber}.\n"
+                    f"Cambio de cita en {get_settings().business_name} 💈\n"
+                    f"La cita de {appointment.customer_name} pasó "
+                    f"de {old_barber} a {target_barber}.\n"
                     f"Nueva fecha: {new:%d/%m/%Y %H:%M}.",
                     session=ctx.deps.db,
                     appointment_id=appointment.id,
@@ -674,7 +750,10 @@ def escalar_humano(ctx: RunContext[BotDeps], motivo: str) -> str:
             elif status == "pending":
                 reply = "El aviso todavía está en proceso; aún no puedo confirmar el envío."
             elif status == "self":
-                reply = "Ese contacto corresponde a tu propio número de equipo. ¿Con quién más necesitas hablar?"
+                reply = (
+                    "Ese contacto corresponde a tu propio número de equipo. "
+                    "¿Con quién más necesitas hablar?"
+                )
             elif status == "unavailable":
                 reply = f"No tengo disponible el contacto de {label}. No se envió ningún aviso."
                 if target != "owner" and normalize_phone(get_settings().owner_wa_id):

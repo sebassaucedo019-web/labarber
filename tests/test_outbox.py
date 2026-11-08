@@ -15,7 +15,7 @@ from app.agent import tools
 from app.agent.deps import BotDeps
 from app.config import get_settings
 from app.store import postgres
-from app.store.models import Appointment, Base, NotificationOutbox
+from app.store.models import Appointment, NotificationOutbox
 
 OWNER = "526141111111"
 OBED = "526142222222"
@@ -28,10 +28,12 @@ def database(tmp_path, monkeypatch):
     engine = create_engine(
         f"sqlite:///{tmp_path / 'outbox.db'}", connect_args={"check_same_thread": False}
     )
-    Base.metadata.create_all(engine)
+    monkeypatch.setattr(postgres, "_engine", engine)
+    postgres.init_db()
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(outbox, "get_session", factory)
     monkeypatch.setattr(outbox, "send_text", Mock(return_value=True))
+    monkeypatch.setattr(outbox, "window_is_open", lambda *args: True)
     monkeypatch.setattr(tools, "confirm_action", lambda *args: True)
     for key, value in {
         "OWNER_WA_ID": OWNER,

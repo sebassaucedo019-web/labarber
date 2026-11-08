@@ -7,11 +7,13 @@ from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 from uuid import uuid4
 
-from sqlalchemy import exists, select, update, or_
+from sqlalchemy import exists, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
-from app.identity import normalize_phone
+from app.appointment_template import send_appointment_template
 from app.config import get_settings
+from app.identity import normalize_phone
+from app.messaging_window import window_is_open
 from app.observability import hash_wa_id
 from app.sender import send_text
 from app.store.models import NotificationOutbox
@@ -93,7 +95,10 @@ def claim_notification() -> Delivery | None:
         session.execute(
             update(NotificationOutbox)
             .where(
-                NotificationOutbox.kind != "appointment",
+                or_(
+                    NotificationOutbox.kind != "appointment",
+                    NotificationOutbox.last_error == "template_submitting",
+                ),
                 NotificationOutbox.status == "sending",
                 NotificationOutbox.available_at <= now,
             )
@@ -153,9 +158,17 @@ def claim_notification() -> Delivery | None:
     return None
 
 
-def finish_delivery(delivery: Delivery, accepted: bool, error: str | None = None) -> bool:
+def finish_delivery(
+    delivery: Delivery,
+    accepted: bool,
+    error: str | None = None,
+    *,
+    terminal_status: str | None = None,
+) -> bool:
     now = _now()
     status = "sent" if accepted else "failed" if delivery.attempts >= MAX_ATTEMPTS else "pending"
+    if terminal_status in {"failed", "uncertain"}:
+        status = terminal_status
     delay = RETRY_SECONDS[min(delivery.attempts - 1, len(RETRY_SECONDS) - 1)]
     with get_session() as session:
         result = session.execute(
@@ -198,9 +211,29 @@ def dispatch_pending(stop: Event | None = None, limit: int = 20) -> int:
             dispatch_automatic(delivery)
             processed += 1
             continue
+        terminal_status = None
         try:
-            accepted = send_text(delivery.recipient, delivery.message)
-            error = None if accepted else "delivery_rejected"
+            if window_is_open(delivery.recipient, _now()):
+                accepted = send_text(delivery.recipient, delivery.message)
+                error = None if accepted else "delivery_rejected"
+            else:
+                with get_session() as session:
+                    marked = session.execute(
+                        update(NotificationOutbox)
+                        .where(
+                            NotificationOutbox.id == delivery.id,
+                            NotificationOutbox.status == "sending",
+                            NotificationOutbox.lease_token == delivery.token,
+                        )
+                        .values(last_error="template_submitting")
+                    )
+                    session.commit()
+                    if marked.rowcount != 1:
+                        processed += 1
+                        continue
+                status, error = send_appointment_template(delivery.recipient, delivery.message)
+                accepted = status == "sent"
+                terminal_status = status if status in {"failed", "uncertain"} else None
         except Exception as exc:
             accepted, error = False, type(exc).__name__[:80]
             logger.warning(
@@ -208,7 +241,7 @@ def dispatch_pending(stop: Event | None = None, limit: int = 20) -> int:
             )
         # If this write fails, the persisted lease expires and another run can recover it.
         # Meta acceptance followed by a crash can still cause a duplicate: not exactly-once.
-        finish_delivery(delivery, accepted, error)
+        finish_delivery(delivery, accepted, error, terminal_status=terminal_status)
         processed += 1
     return processed
 
@@ -246,5 +279,10 @@ def outbox_dispatcher():
 
 def deliver_notification(recipient: str, message: str) -> None:
     """Compatibility for notification jobs already stored in RQ before this upgrade."""
+    if not window_is_open(recipient):
+        logger.error(
+            "aviso legado fuera de ventana; requiere revisión wa_id_hash=%s", hash_wa_id(recipient)
+        )
+        raise RuntimeError("El aviso legado requiere una plantilla aprobada fuera de la ventana")
     if not send_text(recipient, message):
         raise RuntimeError("WhatsApp rechazó la notificación")

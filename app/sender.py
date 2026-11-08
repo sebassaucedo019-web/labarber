@@ -55,12 +55,13 @@ def send_text(wa_id: str, text: str) -> bool:
 
 def welcome_menu_content(wa_id: str) -> tuple[str, list[tuple[str, str]]]:
     scope = staff_scope(wa_id)
+    business = get_settings().business_name
     if scope is not None:
         body = (
-            "Hola. Asistente del equipo de BARBER CG.\nPuedes consultar las citas por WhatsApp, "
+            f"Hola. Asistente del equipo de {business}.\nPuedes consultar las citas por WhatsApp, "
             "registrar citas para clientes y cancelar citas."
             if scope == "all"
-            else f"Hola, {scope}. Asistente del equipo de BARBER CG.\n"
+            else f"Hola, {scope}. Asistente del equipo de {business}.\n"
             "Puedes consultar tus citas por WhatsApp, registrar citas para clientes y cancelarlas."
         )
         body += '\nPara consultar la próxima, escribe "qué cita sigue".'
@@ -70,7 +71,7 @@ def welcome_menu_content(wa_id: str) -> tuple[str, list[tuple[str, str]]]:
             ("staff_cancel", "Cancelar cita"),
         ]
     return (
-        "¡Hola! Bienvenido a BARBER CG 💈\n\nSoy el asistente de la barbería. ¿Qué necesitas?",
+        f"¡Hola! Bienvenido a {business} 💈\n\nSoy el asistente de la barbería. ¿Qué necesitas?",
         [("services", "Servicios"), ("book", "Agendar"), ("my_appointment", "Mi cita")],
     )
 

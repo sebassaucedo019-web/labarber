@@ -11,6 +11,7 @@ REASON = "Quiero hablar con una persona"
 
 
 def configure_owner(monkeypatch):
+    monkeypatch.setattr(escalation, "window_is_open", lambda *args: True)
     monkeypatch.setenv("OWNER_WA_ID", "6140000000")
     get_settings.cache_clear()
 

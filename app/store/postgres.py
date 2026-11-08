@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
-from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy import DateTime, bindparam, create_engine, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
@@ -32,12 +33,16 @@ def init_db() -> None:
         # Web and worker can start simultaneously on Railway.
         if connection.dialect.name == "postgresql":
             connection.execute(text("SELECT pg_advisory_xact_lock(7419302)"))
+        elif connection.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        preexisting_tables = set(inspect(connection).get_table_names())
         Base.metadata.create_all(connection)
         columns = {column["name"] for column in inspect(connection).get_columns("appointments")}
         if "barber" not in columns:
             connection.execute(text("ALTER TABLE appointments ADD COLUMN barber VARCHAR(80)"))
         additions = {
             "appointments": {
+                "duration_minutes": "INTEGER NOT NULL DEFAULT 30",
                 "arrived_at": "TIMESTAMP",
                 "started_at": "TIMESTAMP",
                 "completed_at": "TIMESTAMP",
@@ -46,6 +51,7 @@ def init_db() -> None:
                 "consent_source": "VARCHAR(300)",
             },
             "notification_outbox": {
+                "available_at": "TIMESTAMP",
                 "kind": "VARCHAR(24) NOT NULL DEFAULT 'appointment'",
                 "scheduled_start": "TIMESTAMP",
                 "scheduled_barber": "VARCHAR(80)",
@@ -59,6 +65,25 @@ def init_db() -> None:
             for name, definition in fields.items():
                 if name not in existing:
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
+        outbox_columns = {
+            col["name"] for col in inspect(connection).get_columns("notification_outbox")
+        }
+        if "next_attempt_at" in outbox_columns:
+            connection.execute(
+                text(
+                    "UPDATE notification_outbox SET available_at = next_attempt_at "
+                    "WHERE available_at IS NULL AND next_attempt_at IS NOT NULL"
+                )
+            )
+        connection.execute(
+            text(
+                "UPDATE notification_outbox SET available_at = :now WHERE available_at IS NULL"
+            ).bindparams(bindparam("now", type_=DateTime())),
+            {"now": datetime.now(UTC).replace(tzinfo=None)},
+        )
+        from app.store.migrations import migrate_calendar_utc
+
+        migrate_calendar_utc(connection, preexisting_tables)
         # Existing databases also need the uniqueness guard. Fail startup if
         # conflicting data prevents it; never silently book without protection.
         next(

@@ -27,6 +27,7 @@ YADIER = "526144444444"
 
 @pytest.fixture
 def setup(monkeypatch):
+    monkeypatch.setattr(escalation, "window_is_open", lambda *args: True)
     for key, value in {
         "OWNER_WA_ID": OWNER,
         "BARBER_OBED_WA_ID": OBED,

@@ -31,4 +31,14 @@ def check_rate_limit(wa_id: str) -> bool:
     pipe.incr(key)
     pipe.expire(key, 60)
     count, _ = pipe.execute()
-    return count <= settings.rate_limit_per_minute
+    if count > settings.rate_limit_per_minute:
+        return False
+    global_key = f"ai-turns:{int(time.time() // 60)}"
+    pipe = r.pipeline()
+    pipe.incr(global_key)
+    pipe.expire(global_key, 60)
+    total, _ = pipe.execute()
+    if total > settings.global_ai_turns_per_minute:
+        logging.getLogger(__name__).warning("limite global de turnos IA alcanzado")
+        return False
+    return True

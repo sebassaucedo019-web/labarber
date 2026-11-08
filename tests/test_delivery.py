@@ -8,6 +8,7 @@ from app.observability import RedactAccessQuery
 
 
 def test_legacy_notification_job_can_finish_after_upgrade(monkeypatch):
+    monkeypatch.setattr(notifications, "window_is_open", lambda *args: True)
     delivery = Mock(return_value=False)
     monkeypatch.setattr(notifications, "send_text", delivery)
     with pytest.raises(RuntimeError, match="rechaz"):

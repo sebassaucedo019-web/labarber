@@ -42,6 +42,7 @@ def db(tmp_path, monkeypatch, fake_redis):
     monkeypatch.setattr(tools, "_now", lambda: NOW)
     monkeypatch.setattr(tools, "confirm_action", lambda *args: True)
     monkeypatch.setattr(notifications, "send_text", Mock(return_value=True))
+    monkeypatch.setattr(notifications, "window_is_open", lambda *args: True)
     monkeypatch.setattr(
         reminders, "send_template_notice", Mock(return_value=("sent", "wamid.test", None))
     )
@@ -277,8 +278,10 @@ def test_reschedule_invalidates_old_notice_and_rebuilds_new(db, monkeypatch):
         session.commit()
     reminders.reconcile_reminders()
     with db() as session:
-        ctx = SimpleNamespace(deps=BotDeps(wa_id=CLIENT, db=session, user_message="Sí"))
-        result = tools.reagendar_cita(ctx, "2026-11-01 12:30", "2026-11-01 13:00", "Jesús")
+        ctx = SimpleNamespace(deps=BotDeps(wa_id=OWNER, db=session, user_message="Sí"))
+        result = tools.reagendar_para_cliente(
+            ctx, "2026-11-01 12:30", "2026-11-01 13:00", nuevo_barbero="Jesús"
+        )
         assert "reagendada" in result
     reminders.reconcile_reminders(NOW + timedelta(minutes=30))
     with db() as session:

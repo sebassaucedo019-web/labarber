@@ -25,6 +25,10 @@ def test_initialization_adds_booking_index_on_existing_table(tmp_path, monkeypat
 
 
 def test_conflicting_legacy_bookings_fail_startup_without_deleting_them(tmp_path, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("CALENDAR_UTC_MIGRATION_ENABLED", "true")
+    get_settings.cache_clear()
     engine = create_engine(f"sqlite:///{tmp_path / 'conflicts.db'}")
     with engine.begin() as conn:
         conn.execute(
@@ -37,7 +41,8 @@ def test_conflicting_legacy_bookings_fail_startup_without_deleting_them(tmp_path
         for identity in (1, 2):
             conn.execute(
                 text(
-                    "INSERT INTO appointments (id,barber,starts_at,status) VALUES (:id,'Obed','2090-01-01 12:00','confirmed')"
+                    "INSERT INTO appointments (id,barber,starts_at,status) "
+                    "VALUES (:id,'Obed','2090-01-01 12:00','confirmed')"
                 ),
                 {"id": identity},
             )
@@ -50,6 +55,10 @@ def test_conflicting_legacy_bookings_fail_startup_without_deleting_them(tmp_path
 
 
 def test_waia_migration_preserves_existing_citas_and_outbox(tmp_path, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("CALENDAR_UTC_MIGRATION_ENABLED", "true")
+    get_settings.cache_clear()
     engine = create_engine(f"sqlite:///{tmp_path / 'waia-legacy.db'}")
     with engine.begin() as conn:
         conn.execute(

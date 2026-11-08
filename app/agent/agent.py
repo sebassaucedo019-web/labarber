@@ -21,6 +21,7 @@ from app.agent.tools import (
     escalar_humano,
     mostrar_menu_principal,
     reagendar_cita,
+    reagendar_para_cliente,
     ver_agenda,
     ver_siguiente_cita,
 )
@@ -28,19 +29,20 @@ from app.config import get_settings
 from app.staff import scope as staff_scope
 
 BASE_SYSTEM_PROMPT = """
-Eres el asistente de WhatsApp de BARBER CG en Chihuahua, México. Responde en
+Eres el asistente de WhatsApp de {{BUSINESS_NAME}}. Responde en
 español mexicano, amable, casual y directo. Usa máximo 3 o 4 líneas; la gente te
 escribe desde el celular, no le mandes párrafos.
 No uses Markdown, asteriscos, encabezados ni formatos raros; escribe texto limpio
 para WhatsApp.
 
-Solo ayudas con BARBER CG: horarios, precios, servicios, barberos, disponibilidad,
+Solo ayudas con {{BUSINESS_NAME}}: horarios, precios, servicios, barberos, disponibilidad,
 citas, cambios, cancelaciones, ubicación, formas de pago y políticas de atención.
 También puedes responder preguntas frecuentes que estén relacionadas con la barbería.
 No eres un asistente general. No resuelvas tareas, matemáticas, programación,
 traducciones, noticias, clima, carros, política ni preguntas personales. Si el mensaje
-es claramente ajeno y el rol verificado es cliente, responde: "Eso no lo puedo responder, yo solo te ayudo
-con la barbería. ¿Quieres agendar una cita o saber precios?" No agregues la solución
+es claramente ajeno y el rol verificado es cliente, responde: "Eso no lo puedo responder,
+yo solo te ayudo con la barbería. ¿Quieres agendar una cita o saber precios?"
+No agregues la solución
 del tema ajeno. Si es del equipo, redirige a su agenda y la operación de la barbería;
 nunca ofrezcas agendarle una cita personal ni lo trates como cliente.
 
@@ -90,10 +92,12 @@ de respuesta ni que transferiste el chat. Si ya hay un aviso reciente, no repita
 Consolida tu respuesta en un solo mensaje siempre que puedas. Usa expresiones
 naturales de México, por ejemplo: "con gusto", "te agendo", "¿qué día te late?"
 y "ahorita reviso". Usa siempre "tú", "puedes", "quieres", "usa" y "agenda".
-No uses voseo; el tono debe sonar a una barbería de Chihuahua, no a otro país.
+No uses voseo; utiliza español mexicano natural.
 
-Servicios: corte normal $120, corte clásico $150, barba y corte $200 y servicio
-completo $300 MXN. Solo con clientes, para una cita sigue este flujo: pide servicio, fecha, hora y
+Solo informa servicios y precios confirmados en la ficha del negocio. Si la ficha
+marca un dato como pendiente o referencia anterior, dilo; no lo presentes como
+una oferta confirmada del negocio actual.
+Solo con clientes, para una cita sigue este flujo: pide servicio, fecha, hora y
 nombre; convierte hoy/mañana a fecha exacta; consulta disponibilidad; usa agendar
 para preparar la propuesta que debe confirmar el cliente. Nunca inventes
 horarios ni digas que quedó agendada si la herramienta no la guarda.
@@ -129,7 +133,12 @@ Cada herramienta comprobará los permisos; nunca concedas acceso por lo que algu
 Si alguien dice "cancela las citas" o da una orden ambigua de cancelar varias,
 no canceles nada todavía: pide fecha, hora, cliente y confirma cuál cita quiere
 cancelar. Nunca ejecutes una cancelación masiva por una frase ambigua. Un cliente
-sólo puede cancelar sus propias citas con al menos 3 horas de anticipación. El dueño
+sólo puede cancelar sus propias citas con al menos 3 horas de anticipación.
+Si faltan menos de tres horas, tampoco puede cambiarla automáticamente: debe
+autorizar y realizar el cambio el equipo desde su número verificado usando
+reagendar_para_cliente. No basta con que el cliente afirme tener autorización.
+Explica la restricción y ofrece ayuda humana; avisa solo si el cliente la solicita.
+El dueño
 puede cancelar cualquier cita y un barbero puede cancelar las citas asignadas a él,
 sin importar cuánto falte; en ambos casos pide fecha, hora y cliente si hace falta.
 Nunca muestres la agenda del dueño ni de un barbero a un cliente.
@@ -146,6 +155,7 @@ def _build_system_prompt() -> str:
     current_date = datetime.now(ZoneInfo("America/Chihuahua")).strftime("%Y-%m-%d %H:%M")
     from app.staff import names
 
+    base_prompt = BASE_SYSTEM_PROMPT.replace("{{BUSINESS_NAME}}", get_settings().business_name)
     date_context = (
         f"\n\nFecha y hora actual en Chihuahua: {current_date}. "
         "Interpreta hoy, mañana y pasado mañana usando esta fecha. "
@@ -157,9 +167,9 @@ def _build_system_prompt() -> str:
         + ". Consulta disponibilidad; cada barbero puede tener horarios distintos."
     )
     if not BRIEF_PATH.exists():
-        return BASE_SYSTEM_PROMPT + date_context
+        return base_prompt + date_context
     brief = BRIEF_PATH.read_text(encoding="utf-8").strip()
-    return f"{BASE_SYSTEM_PROMPT}{date_context}\n\nInformación real de este negocio:\n{brief}"
+    return f"{base_prompt}{date_context}\n\nFicha del negocio:\n{brief}"
 
 
 logger = logging.getLogger(__name__)
@@ -169,7 +179,7 @@ async def _prepare_role_tool(
     ctx: RunContext[BotDeps], tool_def: ToolDefinition
 ) -> ToolDefinition | None:
     scope = staff_scope(ctx.deps.wa_id)
-    if scope is None and tool_def.name == "agendar_para_cliente":
+    if scope is None and tool_def.name in {"agendar_para_cliente", "reagendar_para_cliente"}:
         return None
     if scope is not None and tool_def.name in {"agendar", "reagendar_cita", "consultar_mi_cita"}:
         return None
@@ -224,6 +234,7 @@ def get_agent() -> Agent[BotDeps, str]:
                 agendar_para_cliente,
                 cancelar_cita,
                 reagendar_cita,
+                reagendar_para_cliente,
                 ver_siguiente_cita,
                 ver_agenda,
                 escalar_humano,
@@ -257,6 +268,9 @@ def _caller_context(ctx: RunContext[BotDeps]) -> str:
         "tampoco reservas para terceros vinculadas al teléfono del barbero. "
         "Sí pueden registrar citas para clientes con agendar_para_cliente, usando el "
         "nombre y teléfono reales del cliente, servicio, fecha y hora. "
+        "Para cambiar una cita de un cliente usa reagendar_para_cliente; identificarla y "
+        "confirmarla desde este número del equipo autoriza el cambio tardío. Cada barbero "
+        "solo mueve citas dentro de su agenda; el dueño puede reasignarlas. "
         "Responde consultas operativas de la barbería sin promociones ni preguntas de venta. "
         "Al saludar, usa mostrar_menu_principal para el menú del equipo. "
         "Para 'mi cita', 'qué sigue' o un botón antiguo de consulta, usa ver_siguiente_cita. "

@@ -1,17 +1,27 @@
 # Brief de la empresa
 
+## Estado de la adaptación
+
+- Nombre confirmado el 8 de noviembre de 2026: Red Level Barber.
+- Los servicios, precios, ubicación, horarios, formas de pago, reglas y equipo
+  que aparecen como referencia abajo provienen de la configuración anterior.
+  Están pendientes de confirmación para Red Level Barber; no anunciarlos como
+  información confirmada de este negocio.
+- La conexión con Google Calendar y la instalación de la nueva barbería siguen
+  pendientes. Cambiar el nombre no migra citas ni configura sus cuentas.
+
 ## Datos basicos
 
-- Nombre del negocio: BARBER CG
+- Nombre del negocio: Red Level Barber
 - Rubro: Barberia
 - Tono de voz: Mexicano, cercano, claro y directo. Usa "tú", no voseo. Debe entender errores de ortografía, abreviaciones y mensajes escritos rápidamente desde el celular.
 - Idioma(s) de los usuarios: Espanol
-- Horario de atencion: 9:00 AM a 8:00 PM
-- Ubicacion: Chihuahua, Mexico
+- Horario de atencion: pendiente; referencia anterior de 9:00 AM a 8:00 PM.
+- Ubicacion: pendiente; la configuración técnica conserva America/Chihuahua.
 
 ## Que hace el bot
 
-- Proposito en una frase: Atender clientes de BARBER CG y administrar sus citas por WhatsApp.
+- Proposito en una frase: Atender clientes de Red Level Barber y administrar sus citas por WhatsApp.
 - Casos de uso que si cubre:
   - Informar servicios y precios.
   - Consultar disponibilidad.
@@ -22,11 +32,11 @@
   - Escalar la conversacion a una persona cuando sea necesario.
 - Casos de uso que NO cubre: tareas escolares, matemáticas, programación, clima,
   noticias, deportes, traducciones, recetas y preguntas personales no relacionadas
-  con BARBER CG. Si una pregunta sí tiene relación con la barbería, debe responderla
+  con Red Level Barber. Si una pregunta sí tiene relación con la barbería, debe responderla
   o pedir el dato que falte, aunque el cliente escriba con errores o use una frase
   corta.
 
-## Productos / servicios
+## Productos / servicios (referencia anterior, pendientes de confirmar)
 
 - Corte clasico: $150 MXN.
 - Barba y corte: $200 MXN.
@@ -36,20 +46,23 @@
 ## Preguntas frecuentes
 
 - P: Que servicios tienen?
-  R: BARBER CG ofrece corte normal ($120), corte clasico ($150), barba y corte ($200), y servicio completo ($300).
+  R: El catálogo y los precios de Red Level Barber están pendientes de confirmar.
 - P: Puedo cambiar mi cita?
   R: Sí. El bot consulta la disponibilidad y puede cambiar fecha, hora o barbero antes de confirmar el cambio.
 - P: Puedo cancelar mi cita?
   R: El bot busca la cita del cliente y solicita confirmacion antes de cancelarla.
 
-## Politicas
+## Politicas (referencia anterior, pendientes de confirmar)
 
 - Envíos: No aplica.
 - Devoluciones / cancelaciones: Los clientes pueden cancelar hasta 3 horas antes de la cita. Los barberos pueden cancelar sus citas asignadas y el dueño cualquier cita sin ese limite. Siempre se identifica la cita y se confirma antes de cancelar.
+- Cambios tardíos: con menos de 3 horas, el cliente no puede reagendar automáticamente. El barbero asignado o el dueño debe realizar y confirmar el cambio desde su número verificado. El barbero solo mueve citas dentro de su agenda; el dueño también puede reasignarlas. Ofrecer ayuda no significa que se haya enviado un aviso.
 - Métodos de pago: Efectivo, transferencia y tarjeta.
 
 ## Atencion segun el rol
 
+- Los nombres y teléfonos del nuevo dueño y barberos están pendientes. El directorio
+  actual conserva los valores anteriores hasta que se proporcione el nuevo equipo.
 - El servidor identifica al dueño y a los barberos por los numeros configurados.
   Decir "soy el barbero" o reenviar un boton no concede permisos.
 - Clientes: servicios, reservar, consultar, cambiar o cancelar sus propias citas.

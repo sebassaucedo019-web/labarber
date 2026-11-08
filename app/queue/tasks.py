@@ -27,6 +27,7 @@ from app.agent.tools import MENU_SENTINEL
 from app.config import get_settings
 from app.identity import normalize_phone
 from app.observability import check_rate_limit, hash_wa_id
+from app.queue.control import decode_notice, encode_notice
 from app.queue.debounce import schedule_processing
 from app.safety import (
     OUT_OF_SCOPE_REPLY,
@@ -69,23 +70,49 @@ def close_async_runner() -> None:
         _runner = None
 
 
-def buffer_inbound(wa_id: str, message_id: str, text: str) -> None:
+def buffer_inbound(wa_id: str, message_id: str, text: str, *, kind: str = "text") -> None:
     """Atomically accept input and queue work before acknowledging Meta."""
     wa_id = normalize_phone(wa_id)
-    if wa_id is None or not message_id or not text.strip():
+    if wa_id is None or not message_id or (kind == "text" and not text.strip()):
         return
+    if kind not in {"text", "media"}:
+        raise ValueError("Unknown inbound kind")
+    settings = get_settings()
     r = get_redis()
     dedupe = f"dedupe:{message_id}"
+    pending = f"pending:{wa_id}"
+    rate_key = f"ingress:{hash_wa_id(wa_id)}:{int(time.time() // 60)}"
+    notice_key = rate_key + ":notified"
     while True:
         with r.pipeline() as pipe:
             try:
-                pipe.watch(dedupe)
+                pipe.watch(dedupe, pending, rate_key, notice_key)
                 if pipe.exists(dedupe):
                     return
+                count = int(pipe.get(rate_key) or 0)
+                queued = pipe.llen(pending)
+                limited = (
+                    count >= settings.inbound_limit_per_minute
+                    or queued >= settings.max_pending_messages - 1
+                )
+                notify_limit = (
+                    limited
+                    and not pipe.exists(notice_key)
+                    and queued < settings.max_pending_messages
+                )
                 pipe.multi()
-                pipe.rpush(f"pending:{wa_id}", text[:4000])
-                pipe.set(dedupe, "1", ex=7 * 24 * 60 * 60)
-                schedule_processing(wa_id, pipeline=pipe)
+                pipe.set(dedupe, "1", ex=120 if limited else 7 * 24 * 60 * 60)
+                if not limited:
+                    pipe.incr(rate_key)
+                    pipe.expire(rate_key, 120)
+                    pipe.rpush(
+                        pending, encode_notice(wa_id, "media") if kind == "media" else text[:4000]
+                    )
+                    schedule_processing(wa_id, pipeline=pipe)
+                elif notify_limit:
+                    pipe.set(notice_key, "1", ex=120)
+                    pipe.rpush(pending, encode_notice(wa_id, "limit"))
+                    schedule_processing(wa_id, pipeline=pipe)
                 pipe.execute()
                 return
             except WatchError:
@@ -105,6 +132,10 @@ def process_wa_id(wa_id: str) -> None:
         messages = claim_batch(wa_id, MAX_BATCH_CHARS)
         if not messages:
             return
+        notices = list(
+            dict.fromkeys(notice for value in messages if (notice := decode_notice(wa_id, value)))
+        )
+        text_messages = [value for value in messages if decode_notice(wa_id, value) is None]
         reply_key, started_key = f"reply:{wa_id}", f"batch-started:{wa_id}"
         reply = decode(r.get(reply_key))
         if reply is None:
@@ -112,10 +143,12 @@ def process_wa_id(wa_id: str) -> None:
                 # A worker can die after a tool commits. Never repeat a mutation
                 # blindly when its final response was not persisted.
                 reply = INTERRUPTED_REPLY
+            elif not text_messages:
+                reply = "\n".join(notices)
             elif not check_rate_limit(wa_id):
                 reply = "Recibí muchos mensajes seguidos. Espera un minuto y volvemos a intentarlo."
             else:
-                prompt = "\n".join(messages)
+                prompt = "\n".join(text_messages)
                 session = get_session()
                 try:
                     _log_message_safely(session, wa_id, "in", prompt)
@@ -123,6 +156,10 @@ def process_wa_id(wa_id: str) -> None:
                     reply = _run_agent(session, wa_id, prompt)
                 finally:
                     session.close()
+            if notices and text_messages:
+                if reply == MENU_SENTINEL:
+                    reply = welcome_menu_text(wa_id)
+                reply += "\n" + "\n".join(notices)
         # A pre-upgrade reply can still be waiting in Redis. Preserve the batch
         # and its completed operations, but never resend a retired agenda link.
         reply = retire_agenda_links(reply)

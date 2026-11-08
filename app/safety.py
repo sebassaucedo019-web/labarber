@@ -7,12 +7,12 @@ OUT_OF_SCOPE_REPLY = (
 )
 
 STAFF_HELP_REPLY = (
-    "Este número está registrado como parte del equipo de BARBER CG. "
+    "Este número está registrado como parte del equipo de la barbería. "
     "Puedo mostrarte la agenda, la siguiente cita, registrar una cita para un cliente "
     "con su nombre y teléfono, o ayudarte a cancelarla."
 )
 STAFF_OUT_OF_SCOPE_REPLY = (
-    "Solo te ayudo con la operación de BARBER CG. "
+    "Solo te ayudo con la operación de la barbería. "
     "¿Necesitas la agenda, registrar una cita para un cliente o cancelar una cita?"
 )
 
@@ -67,4 +67,4 @@ def sanitize_reply(text: str) -> str:
     # WhatsApp can display Markdown markers literally in plain-text replies.
     cleaned = cleaned.replace("*", "")
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
-    return cleaned or "Con gusto te ayudo con servicios y citas de BARBER CG 💈"
+    return cleaned or "Con gusto te ayudo con los servicios y citas de la barbería 💈"

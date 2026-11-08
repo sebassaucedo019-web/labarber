@@ -56,6 +56,13 @@ class Settings(BaseSettings):
 
     debounce_seconds: float = Field(default=2.5, ge=0, le=10)
     rate_limit_per_minute: int = Field(default=20, ge=1, le=300)
+    inbound_limit_per_minute: int = Field(default=20, ge=1, le=300)
+    max_pending_messages: int = Field(default=40, ge=2, le=300)
+    global_ai_turns_per_minute: int = Field(default=60, ge=1, le=10000)
+    booking_min_notice_minutes: int = Field(default=0, ge=0, le=43200)
+    booking_max_advance_days: int | None = Field(default=None, ge=1, le=730)
+    service_durations: dict[str, int] = Field(default_factory=dict)
+    calendar_utc_migration_enabled: bool = False
 
     groq_api_key: str | None = None
     crm_webhook_url: str | None = None
@@ -65,17 +72,35 @@ class Settings(BaseSettings):
     barber_jesus_wa_id: str | None = None
     barber_yadier_wa_id: str | None = None
     barbers: list[BarberConfig] = Field(default_factory=list)
-    business_name: str = "BARBER CG"
+    business_name: str = "Red Level Barber"
     automatic_notices_enabled: bool = False
     reminder_template_name: str = ""
     turn_template_name: str = ""
+    appointment_template_name: str = ""
+    support_template_name: str = ""
     notification_template_language: str = "es_MX"
+
+    @model_validator(mode="after")
+    def valid_booking_policy(self):
+        services = {"corte normal", "corte clásico", "barba y corte", "servicio completo"}
+        for service, minutes in self.service_durations.items():
+            if service not in services or minutes < 30 or minutes > 720 or minutes % 30:
+                raise ValueError(
+                    "Duraciones: servicio válido y múltiplos de 30, entre 30 y 720 minutos"
+                )
+        if (
+            self.booking_max_advance_days is not None
+            and self.booking_min_notice_minutes >= self.booking_max_advance_days * 1440
+        ):
+            raise ValueError("La anticipación mínima debe ser menor que la máxima")
+        return self
 
     @field_validator("barbers")
     @classmethod
     def unique_barbers(cls, value):
-        from app.identity import normalize_phone
         import unicodedata
+
+        from app.identity import normalize_phone
 
         names = [
             "".join(

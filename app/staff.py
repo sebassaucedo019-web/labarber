@@ -44,10 +44,18 @@ def scope(wa_id: str) -> str | None:
     return next((b.name for b in roster() if normalize_phone(b.phone) == caller), None)
 
 
-def working_slot(barber: str, at: datetime) -> bool:
+def working_slot(barber: str, at: datetime, duration_minutes: int = 30) -> bool:
     member = next((b for b in roster() if b.name == barber), None)
-    if member is None or at.minute % 30 or at.second or at.microsecond:
+    if (
+        member is None
+        or at.minute % 30
+        or at.second
+        or at.microsecond
+        or duration_minutes < 30
+        or duration_minutes > 720
+        or duration_minutes % 30
+    ):
         return False
     windows = [[540, 1200]] if member.hours is None else member.hours.get(str(at.weekday()), [])
     minute = at.hour * 60 + at.minute
-    return any(start <= minute and minute + 30 <= end for start, end in windows)
+    return any(start <= minute and minute + duration_minutes <= end for start, end in windows)

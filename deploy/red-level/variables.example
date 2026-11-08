@@ -1,0 +1,12 @@
+# Solo valores no secretos. Aplicar en ambos servicios del NUEVO proyecto.
+# Referencias validas si las bases nuevas se llaman exactamente Postgres y Redis.
+BUSINESS_NAME=Red Level Barber
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+AUTOMATIC_NOTICES_ENABLED=false
+CALENDAR_UTC_MIGRATION_ENABLED=false
+
+# Completar los secretos y OPENAI_MODEL directamente en Railway Variables.
+# No copiar el .env local: contiene configuracion del negocio anterior.
+# No poner BARBERS=[]: activa el directorio anterior como fallback.
+# Estos valores por si solos NO habilitan Google Calendar.
